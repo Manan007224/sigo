@@ -3,10 +3,25 @@ package main
 import (
 	"net/http"
 	"github.com/gorilla/websocket"
-	"time"
 	"fmt"
 	"log"
+	"encoding/json"
+	"io/ioutil"
 )
+
+type Sigo struct {
+	workers map[*websocket.Conn]*Worker
+	incomingJobs chan *Job
+}
+
+type Worker struct {
+	conn *websocket.Conn
+	host string
+	id string
+	gid string
+	jobChan chan *Job
+	pending int
+}
 
 var (
 	upgrader = websocket.Upgrader {
@@ -15,95 +30,24 @@ var (
 		CheckOrigin: func(r *http.Request) bool {
 			return true
 		},
-		sigo := &Sigo{
-			pool: Pool,
-			workers: make(map[*websocket.Conn]*Worker)
-		}
+	}
+	sigo = &Sigo{
+		workers: make(map[*websocket.Conn]*Worker),
+		incomingjobs: make(chan *Job),
 	}
 )
 
-type Pool []*Worker
-
-type Sigo struct {
-	pool Pool
-	workers map[*websocket.Conn]*Worker
-}
-
-type Worker struct {
-	conn *websocket.Conn
-	host string
-	id string
-	gid string // goroutine-id
-	jobChan chan *Job
-}
-
-func (w *Worker) Run() {
-	// listen for the incoming messages
-}
-
-type Job struct {
-	jid string
-	name string
-	args []interface{}
-}
-
-
-type Balancer struct {
-	Pool 	*Pool
-	Done 	chan *Worker
-}
-
-func (b *Balancer) Balance(requests <-chan Job) {
-	for {
-		select {
-		case job := <-requests:
-			b.dispatch(job)
-			fmt.Println(b.Pool)
-		case worker := <-b.Done:
-			b.complete(worker)
-		}
-	}
-}
-
-func (b *Balancer) dispatch(job *Job) {
-	w := heap.Pop(b.Pool).(*Worker)
-	w.jobChan <- job
-	w.pending += 1
-	heap.Push(b.Pool, w)
-}
-
-func (b *Balancer) complete(worker *Worker) {
-	worker.pending -= 1
-	heap.Fix(b.Pool, worker.index)
-}
-
-func (p Pool) Len () int { return len(p) }
-
-func (p Pool) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
-	p[i].index = i
-	p[j].index = j
-}
-
-func (p *Pool) Push(w interface{}) {
-	worker := w.(*Worker)
-	worker.index = p.Len()
-	*p = append(*p,  worker)
-}
-
-func (p *Pool) Pop() interface{} {
-	old := *(p)
-	n := len(old)
-	item := old[n-1]
-	item.index = -1
-	*(p) = old[0 : n-1]
-	return item
-}
-
-
-
 func publish(w http.ResponseWriter, r *http.Request) {
+	var data map[string]interface{}
+	b, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
 
+	err = json.Unmarshal(b, &data)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	sigo.incomingJobs <- NewJob(data.Jid, data.Name, data.Args)
 }
 
 func subscribe(w http.ResponseWriter, r *http.Request) {
@@ -128,35 +72,22 @@ func subscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go worker.Run()
+
 }
 
-func NewPool() *Pool {
-	var p Pool
-	heap.Init(&p)
-	return &p
+func (w *Worker) Run() {
+	// for {
+	// 	select {
+	// 	case job := <-w.jobChan:
+	// 		done <-
+	// 	}
+	// }
 }
-
-func init(pool) sigo {
-	return &sigo {
-		pool: pool,
-		workers: make(chan *Worker)
-	}
-}
-
 
 func main() {
 
-	pool := NewPool()
-	sigo := init(pool)
-
-	jobRequest := make(chan *Job)
-
-	balancer := &Balancer {
-		pool: pool,
-		done: make(chan Job)
-	}
-
-	go balancer.Balance(jobRequest)
+	done := make(chan *Worker)
+	go Dispatch(sigo.incomingJobs)
 
 	// sigo handles a push-job
 	http.HandleFunc("/publish", publish)
