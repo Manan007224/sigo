@@ -89,12 +89,12 @@ func consume(w http.ResponseWriter, r *http.Request) {
 }
 
 func (w *Worker) Run() {
-	for {
-		select {
-		case job := <-w.jobChan:
-			done <-
-		}
-	}
+	// for {
+	// 	select {
+	// 	case job := <-w.jobChan:
+	// 		done <-
+	// 	}
+	// }
 }
 
 func main() {
