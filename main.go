@@ -75,6 +75,7 @@ func consume(w http.ResponseWriter, r *http.Request) {
 		conn:                conn,
 		host:                host,
 		id:                  id,
+		// client worker id
 		gid:                 gid,
 		jobChan:             make(chan *Job),
 		clientWorkerTimeout: make(chan bool),
@@ -85,7 +86,10 @@ func consume(w http.ResponseWriter, r *http.Request) {
 		lastHeartBeat:       time.Now(),
 	}
 
+	// 1 on 1 mapping 
 	go worker.Run()
+
+	// TODO: Add worker to the pool (array of worker) 
 }
 
 func ping(w http.ResponseWriter, r *http.Request) {

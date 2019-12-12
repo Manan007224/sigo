@@ -45,6 +45,7 @@ func (b *Balancer) Balance(jobRequests <-chan *Job) {
 }
 
 func (b *Balancer) dispatch(job *Job) {
+	// min heap take the least busy one from pool 
 	w := heap.Pop(b.Pool).(*Worker)
 	w.jobChan <- job
 	w.pending += 1
