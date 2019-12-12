@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/gorilla/websocket"
+	uuid "github.com/google/uuid"
 	"log"
 	"time"
 )
@@ -10,9 +11,7 @@ import (
 type Worker struct {
 	sigo                *Sigo
 	conn                *websocket.Conn
-	host                string
-	id                  string
-	gid                 string
+	pid					uuid.UUID
 	jobChan             chan *Job
 	doneChan            chan *Worker
 	clientWorkerTimeout chan bool

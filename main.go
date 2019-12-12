@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"sync/atomic"
 	"time"
-
 	"github.com/gorilla/websocket"
+	uuid "github.com/google/uuid"
 )
 
 // Sigo ..
@@ -64,19 +64,20 @@ func consume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	host := r.URL.Query().Get("topic")
-	id := r.URL.Query().Get("id")
-	gid := r.URL.Query().Get("gid")
+	pid, er := uuid.Parse(r.URL.Query().Get("pid"))
+
+	if er != nil {
+		fmt.Println("error is parsing uuid")
+		return
+	}
 
 	atomic.AddUint32(&sigo.concurrency, 1)
 
 	worker := &Worker{
 		sigo:                sigo,
 		conn:                conn,
-		host:                host,
-		id:                  id,
 		// client worker id
-		gid:                 gid,
+		pid:                 pid,
 		jobChan:             make(chan *Job),
 		clientWorkerTimeout: make(chan bool),
 		doneChan:            done,
@@ -86,10 +87,10 @@ func consume(w http.ResponseWriter, r *http.Request) {
 		lastHeartBeat:       time.Now(),
 	}
 
-	// 1 on 1 mapping 
+	// 1 on 1 mapping
 	go worker.Run()
 
-	// TODO: Add worker to the pool (array of worker) 
+	// TODO: Add worker to the pool (array of worker)
 }
 
 func ping(w http.ResponseWriter, r *http.Request) {
