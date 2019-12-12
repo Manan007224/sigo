@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -13,7 +12,7 @@ type Job struct {
 	State string
 }
 
-func NewJob(jid, name string, args []interface{}) {
+func NewJob(jid, name string, args []interface{}) *Job {
 	return &Job {
 		Jid: jid,
 		Name: name,

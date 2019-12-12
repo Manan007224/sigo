@@ -7,11 +7,13 @@ import (
 	"log"
 	"encoding/json"
 	"io/ioutil"
+	"sync/atomic"
 )
 
 type Sigo struct {
 	workers map[*websocket.Conn]*Worker
 	incomingJobs chan *Job
+	concurrency uint32
 }
 
 type Worker struct {
@@ -21,6 +23,7 @@ type Worker struct {
 	gid string
 	jobChan chan *Job
 	pending int
+	index int
 }
 
 var (
@@ -33,12 +36,20 @@ var (
 	}
 	sigo = &Sigo{
 		workers: make(map[*websocket.Conn]*Worker),
-		incomingjobs: make(chan *Job),
+		incomingJobs: make(chan *Job),
+		concurrency: 0,
 	}
 )
 
 func publish(w http.ResponseWriter, r *http.Request) {
-	var data map[string]interface{}
+
+	type incomingJob struct {
+		Jid string
+		Name string
+		Args []interface{}
+	}
+	var data incomingJob
+
 	b, err := ioutil.ReadAll(r.Body)
 	defer r.Body.Close()
 
@@ -50,7 +61,7 @@ func publish(w http.ResponseWriter, r *http.Request) {
 	sigo.incomingJobs <- NewJob(data.Jid, data.Name, data.Args)
 }
 
-func subscribe(w http.ResponseWriter, r *http.Request) {
+func consume(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("websocket connection failed")
@@ -62,13 +73,15 @@ func subscribe(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	gid := r.URL.Query().Get("gid")
 
+	atomic.AddUint32(&sigo.concurrency, 1)
+
 	worker := &Worker {
 		conn : conn,
 		host: host,
 		id: id,
 		gid: gid,
 		jobChan: make(chan *Job),
-
+		index: int(sigo.concurrency),
 	}
 
 	go worker.Run()
@@ -76,24 +89,24 @@ func subscribe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (w *Worker) Run() {
-	// for {
-	// 	select {
-	// 	case job := <-w.jobChan:
-	// 		done <-
-	// 	}
-	// }
+	for {
+		select {
+		case job := <-w.jobChan:
+			done <-
+		}
+	}
 }
 
 func main() {
 
 	done := make(chan *Worker)
-	go Dispatch(sigo.incomingJobs)
+	go Dispatch(sigo.incomingJobs, done)
 
 	// sigo handles a push-job
 	http.HandleFunc("/publish", publish)
 
 	// sigo handles a worker connection
-	http.HandleFunc("/consumer", consume)
+	http.HandleFunc("/consume", consume)
 
 	fmt.Println("server listening on port 3000")
 

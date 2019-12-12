@@ -2,6 +2,7 @@ package main
 
 import (
 	"container/heap"
+	"fmt"
 )
 
 type Pool []*Worker
@@ -11,7 +12,7 @@ type Balancer struct {
 	Done chan *Worker
 }
 
-func Dispatch(jobRequests <-chan Job, done chan *Worker) {
+func Dispatch(jobRequests <-chan *Job, done chan *Worker) {
 	var p Pool
 	heap.Init(&p)
 
