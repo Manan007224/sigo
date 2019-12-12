@@ -10,15 +10,17 @@ type Pool []*Worker
 type Balancer struct {
 	Pool *Pool
 	Done chan *Worker
+	WorkerDone chan *Worker
 }
 
-func Dispatch(jobRequests <-chan *Job, done chan *Worker) {
+func Dispatch(jobRequests <-chan *Job, done chan *Worker, wdone chan *Worker) {
 	var p Pool
 	heap.Init(&p)
 
 	b := &Balancer {
 		Pool: &p,
 		Done: done,
+		WorkerDone: wdone,
 	}
 
 	b.Balance(jobRequests)
@@ -32,6 +34,8 @@ func (b *Balancer) Balance(jobRequests <-chan *Job) {
 			fmt.Println(b.Pool)
 		case worker := <-b.Done:
 			b.complete(worker)
+		case worker := <-b.WorkerDone:
+			b.delete(worker)
 		}
 	}
 }
@@ -46,6 +50,10 @@ func (b *Balancer) dispatch(job *Job) {
 func (b *Balancer) complete(worker *Worker) {
 	worker.pending -= 1
 	heap.Fix(b.Pool, worker.index)
+}
+
+func (b *Balancer) delete(worker *Worker) {
+	heap.Remove(b.Pool, worker.index)
 }
 
 func (p Pool) Len () int { return len(p) }

@@ -8,22 +8,13 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"sync/atomic"
+	"time"
 )
 
 type Sigo struct {
 	workers map[*websocket.Conn]*Worker
 	incomingJobs chan *Job
 	concurrency uint32
-}
-
-type Worker struct {
-	conn *websocket.Conn
-	host string
-	id string
-	gid string
-	jobChan chan *Job
-	pending int
-	index int
 }
 
 var (
@@ -39,6 +30,8 @@ var (
 		incomingJobs: make(chan *Job),
 		concurrency: 0,
 	}
+	done = make(chan *Worker)
+	workerDone = make(chan *Worker)
 )
 
 func publish(w http.ResponseWriter, r *http.Request) {
@@ -76,31 +69,28 @@ func consume(w http.ResponseWriter, r *http.Request) {
 	atomic.AddUint32(&sigo.concurrency, 1)
 
 	worker := &Worker {
+		sigo: sigo,
 		conn : conn,
 		host: host,
 		id: id,
 		gid: gid,
 		jobChan: make(chan *Job),
+		clientWorkerTimeout: make(chan bool),
+		doneChan: done,
+		WorkerDone: workerDone,
 		index: int(sigo.concurrency),
+		pending: 0,
+		lastHeartBeat: time.Now(),
 	}
 
 	go worker.Run()
 
 }
 
-func (w *Worker) Run() {
-	// for {
-	// 	select {
-	// 	case job := <-w.jobChan:
-	// 		done <-
-	// 	}
-	// }
-}
 
 func main() {
 
-	done := make(chan *Worker)
-	go Dispatch(sigo.incomingJobs, done)
+	go Dispatch(sigo.incomingJobs, done, workerDone)
 
 	// sigo handles a push-job
 	http.HandleFunc("/publish", publish)
