@@ -5,27 +5,31 @@ import (
 	"fmt"
 )
 
+// Pool ..
 type Pool []*Worker
 
+// Balancer ..
 type Balancer struct {
-	Pool *Pool
-	Done chan *Worker
+	Pool       *Pool
+	Done       chan *Worker
 	WorkerDone chan *Worker
 }
 
+// Dispatch ..
 func Dispatch(jobRequests <-chan *Job, done chan *Worker, wdone chan *Worker) {
 	var p Pool
 	heap.Init(&p)
 
-	b := &Balancer {
-		Pool: &p,
-		Done: done,
+	b := &Balancer{
+		Pool:       &p,
+		Done:       done,
 		WorkerDone: wdone,
 	}
 
 	b.Balance(jobRequests)
 }
 
+// Balance ..
 func (b *Balancer) Balance(jobRequests <-chan *Job) {
 	for {
 		select {
@@ -56,7 +60,7 @@ func (b *Balancer) delete(worker *Worker) {
 	heap.Remove(b.Pool, worker.index)
 }
 
-func (p Pool) Len () int { return len(p) }
+func (p Pool) Len() int { return len(p) }
 
 func (p Pool) Less(i, j int) bool { return p[i].pending < p[j].pending }
 
@@ -69,7 +73,7 @@ func (p Pool) Swap(i, j int) {
 func (p *Pool) Push(w interface{}) {
 	worker := w.(*Worker)
 	worker.index = p.Len()
-	*p = append(*p,  worker)
+	*p = append(*p, worker)
 }
 
 func (p *Pool) Pop() interface{} {

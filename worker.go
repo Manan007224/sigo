@@ -6,22 +6,23 @@ import (
 	"time"
 )
 
+// Worker ..
 type Worker struct {
-	sigo *Sigo
-	conn *websocket.Conn
-	host string
-	id 	string
-	gid string
-	jobChan chan *Job
-	doneChan chan *Worker
+	sigo                *Sigo
+	conn                *websocket.Conn
+	host                string
+	id                  string
+	gid                 string
+	jobChan             chan *Job
+	doneChan            chan *Worker
 	clientWorkerTimeout chan bool
-	WorkerDone chan *Worker
-	pending int
-	index 	int
-	lastHeartBeat time.Time
-
+	WorkerDone          chan *Worker
+	pending             int
+	index               int
+	lastHeartBeat       time.Time
 }
 
+// Run ..
 func (w *Worker) Run() {
 
 	go w.heartbeat_client_worker()
@@ -43,7 +44,7 @@ func (w *Worker) heartbeat_client_worker() {
 
 	go func() {
 		latestHeartBeat := time.Now()
-		if int(latestHeartBeat.Sub(w.lastHeartBeat)) / 1000000000 > 60 {
+		if int(latestHeartBeat.Sub(w.lastHeartBeat))/1000000000 > 60 {
 			w.clientWorkerTimeout <- true
 		}
 

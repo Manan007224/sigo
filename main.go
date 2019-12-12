@@ -1,24 +1,26 @@
 package main
 
 import (
-	"net/http"
-	"github.com/gorilla/websocket"
-	"fmt"
-	"log"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
+	"log"
+	"net/http"
 	"sync/atomic"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
+// Sigo ..
 type Sigo struct {
-	workers map[*websocket.Conn]*Worker
+	workers      map[*websocket.Conn]*Worker
 	incomingJobs chan *Job
-	concurrency uint32
+	concurrency  uint32
 }
 
 var (
-	upgrader = websocket.Upgrader {
+	upgrader = websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 		CheckOrigin: func(r *http.Request) bool {
@@ -26,18 +28,18 @@ var (
 		},
 	}
 	sigo = &Sigo{
-		workers: make(map[*websocket.Conn]*Worker),
+		workers:      make(map[*websocket.Conn]*Worker),
 		incomingJobs: make(chan *Job),
-		concurrency: 0,
+		concurrency:  0,
 	}
-	done = make(chan *Worker)
+	done       = make(chan *Worker)
 	workerDone = make(chan *Worker)
 )
 
 func publish(w http.ResponseWriter, r *http.Request) {
 
 	type incomingJob struct {
-		Jid string
+		Jid  string
 		Name string
 		Args []interface{}
 	}
@@ -68,29 +70,33 @@ func consume(w http.ResponseWriter, r *http.Request) {
 
 	atomic.AddUint32(&sigo.concurrency, 1)
 
-	worker := &Worker {
-		sigo: sigo,
-		conn : conn,
-		host: host,
-		id: id,
-		gid: gid,
-		jobChan: make(chan *Job),
+	worker := &Worker{
+		sigo:                sigo,
+		conn:                conn,
+		host:                host,
+		id:                  id,
+		gid:                 gid,
+		jobChan:             make(chan *Job),
 		clientWorkerTimeout: make(chan bool),
-		doneChan: done,
-		WorkerDone: workerDone,
-		index: int(sigo.concurrency),
-		pending: 0,
-		lastHeartBeat: time.Now(),
+		doneChan:            done,
+		WorkerDone:          workerDone,
+		index:               int(sigo.concurrency),
+		pending:             0,
+		lastHeartBeat:       time.Now(),
 	}
 
 	go worker.Run()
-
 }
 
+func ping(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "route %s doesn't exist", r.URL.Path[1:])
+}
 
 func main() {
-
 	go Dispatch(sigo.incomingJobs, done, workerDone)
+
+	// handle not found
+	http.HandleFunc("/", ping)
 
 	// sigo handles a push-job
 	http.HandleFunc("/publish", publish)
