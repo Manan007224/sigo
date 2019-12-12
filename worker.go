@@ -41,17 +41,13 @@ func (w *Worker) Run() {
 }
 
 func (w *Worker) heartbeat_client_worker() {
-
-	go func() {
+	for {
+		// check for the last hearbeat
 		latestHeartBeat := time.Now()
 		if int(latestHeartBeat.Sub(w.lastHeartBeat))/1000000000 > 60 {
 			w.clientWorkerTimeout <- true
 		}
 
-		time.Sleep(60 * time.Second)
-	}()
-
-	for {
 		msgType, bytes, err := w.conn.ReadMessage()
 		if err != nil {
 			log.Println("read err", err)
@@ -70,5 +66,7 @@ func (w *Worker) heartbeat_client_worker() {
 			log.Println("Write Error: ", err)
 			break
 		}
+
+		time.Sleep(60 * time.Second)
 	}
 }
