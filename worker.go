@@ -2,23 +2,23 @@ package main
 
 import (
 	"github.com/gorilla/websocket"
-	uuid "github.com/google/uuid"
 	"log"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 )
 
 // Worker ..
 type Worker struct {
-	sigo                *Sigo
-	conn                *websocket.Conn
-	pid					uuid.UUID
-	jobChan             chan *Job
-	doneChan            chan *Worker
-	clientWorkerTimeout chan bool
-	WorkerDone          chan *Worker
-	pending             int
-	index               int
-	lastHeartBeat       time.Time
+	sigo          *Sigo
+	conn          *websocket.Conn
+	jobChan       chan *Job
+	workerTimeout chan bool
+	lastHeartBeat time.Time
+	mtx           sync.Mutex
+	utilization   int
+	host          string
 }
 
 // Run ..
@@ -30,13 +30,23 @@ func (w *Worker) Run() {
 		select {
 		case job := <-w.jobChan:
 			log.Println(job)
-			// w.executeJob(job)
-			w.doneChan <- w
-		case <-w.clientWorkerTimeout:
-			delete(w.sigo.workers, w.conn)
-			w.WorkerDone <- w
+		case <-w.workerTimeout:
+			w.conn.Close()
+			return
 		}
 	}
+}
+
+func (w *Worker) read_message() (int, []byte, error) {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+	return w.conn.ReadMessage()
+}
+
+func (w *Worker) write_message(msgType int, msg []byte) error {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+	return w.conn.WriteMessage(msgType, msg)
 }
 
 func (w *Worker) heartbeat_client_worker() {
@@ -44,28 +54,26 @@ func (w *Worker) heartbeat_client_worker() {
 		// check for the last hearbeat
 		latestHeartBeat := time.Now()
 		if int(latestHeartBeat.Sub(w.lastHeartBeat))/1000000000 > 60 {
-			w.clientWorkerTimeout <- true
+			w.workerTimeout <- true
 		}
 
-		msgType, bytes, err := w.conn.ReadMessage()
+		msgType, bytes, err := w.read_message()
 		if err != nil {
 			log.Println("read err", err)
 			break
 		}
 		msg := string(bytes[:])
-		if msgType != websocket.TextMessage && msg != "ping" {
-			log.Println("unrecognized message")
-		} else {
+
+		if msgType == websocket.TextMessage {
 			w.lastHeartBeat = time.Now()
-			log.Println("received ping")
-		}
+			w.utilization, _ = strconv.Atoi(strings.Split(msg, "-")[1])
 
-		err = w.conn.WriteMessage(websocket.TextMessage, []byte("pong"))
-		if err != nil {
-			log.Println("Write Error: ", err)
-			break
+			err = w.write_message(websocket.TextMessage, []byte("ack"))
+			if err != nil {
+				log.Println("Write Error: ", err)
+				break
+			}
+			time.Sleep(60 * time.Second)
 		}
-
-		time.Sleep(60 * time.Second)
 	}
 }

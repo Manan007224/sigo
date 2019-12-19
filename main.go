@@ -3,20 +3,17 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"sync/atomic"
 	"time"
-	"github.com/gorilla/websocket"
-	uuid "github.com/google/uuid"
 )
 
 // Sigo ..
 type Sigo struct {
 	workers      map[*websocket.Conn]*Worker
 	incomingJobs chan *Job
-	concurrency  uint32
 }
 
 var (
@@ -30,10 +27,7 @@ var (
 	sigo = &Sigo{
 		workers:      make(map[*websocket.Conn]*Worker),
 		incomingJobs: make(chan *Job),
-		concurrency:  0,
 	}
-	done       = make(chan *Worker)
-	workerDone = make(chan *Worker)
 )
 
 func publish(w http.ResponseWriter, r *http.Request) {
@@ -53,10 +47,11 @@ func publish(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err)
 	}
 
-	sigo.incomingJobs <- NewJob(data.Jid, data.Name, data.Args)
+	// sigo.incomingJobs <- NewJob(data.Jid, data.Name, data.Args)
 }
 
 func consume(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("reached here")
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("websocket connection failed")
@@ -64,33 +59,17 @@ func consume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pid, er := uuid.Parse(r.URL.Query().Get("pid"))
-
-	if er != nil {
-		fmt.Println("error is parsing uuid")
-		return
-	}
-
-	atomic.AddUint32(&sigo.concurrency, 1)
-
 	worker := &Worker{
-		sigo:                sigo,
-		conn:                conn,
-		// client worker id
-		pid:                 pid,
-		jobChan:             make(chan *Job),
-		clientWorkerTimeout: make(chan bool),
-		doneChan:            done,
-		WorkerDone:          workerDone,
-		index:               int(sigo.concurrency),
-		pending:             0,
-		lastHeartBeat:       time.Now(),
+		sigo:          sigo,
+		conn:          conn,
+		host:          r.URL.Query().Get("host"),
+		jobChan:       make(chan *Job),
+		workerTimeout: make(chan bool),
+		lastHeartBeat: time.Now(),
+		utilization:   100,
 	}
 
-	// 1 on 1 mapping
 	go worker.Run()
-
-	// TODO: Add worker to the pool (array of worker)
 }
 
 func ping(w http.ResponseWriter, r *http.Request) {
@@ -98,8 +77,6 @@ func ping(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	go Dispatch(sigo.incomingJobs, done, workerDone)
-
 	// handle not found
 	http.HandleFunc("/", ping)
 
