@@ -62,9 +62,7 @@ func (w *Worker) heartbeat_client_worker() {
 		if err != nil {
 			log.Println("read err", err)
 			break
-		} else {
-			fmt.Println("success in reading")
-		}
+		} 
 		msg := string(bytes[:])
 
 		if msgType == websocket.TextMessage {
@@ -76,8 +74,6 @@ func (w *Worker) heartbeat_client_worker() {
 			if err != nil {
 				log.Println("Write Error: ", err)
 				break
-			} else {
-				fmt.Println("success in writing")
 			}
 			time.Sleep(3 * time.Second)
 		}

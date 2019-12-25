@@ -5,12 +5,12 @@ package main
 type Job struct {
 	Jid              string
 	Name             string
-	Args             []interface{}
+	Args             map[string]interface{}
 	Queue			 string
 }
 
 // NewJob ..
-func NewJob(jid, name, queue string, args []interface{}) *Job {
+func NewJob(jid, name, queue string, args map[string]interface{}) *Job {
 	return &Job{
 		Jid:  	jid,
 		Name: 	name,
