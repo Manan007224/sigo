@@ -10,14 +10,19 @@ import (
 	"time"
 	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/gomodule/redigo/redis"
+	wr "github.com/mroth/weightedrand"
+	"math/rand"
 )
 
 // Sigo ..
 type Sigo struct {
-	workers      map[*websocket.Conn]*Worker
-	incomingJobs chan *Job
-	pool		 *redis.Pool
-	jobQueues	 *hashset.Set
+	workers 		[]*Worker
+	incomingJobs 	chan *Job
+	pool		 	*redis.Pool
+	jobQueues	 	map[string]int
+	queueChooser	wr.Chooser
+	freeWorkers		*hashset.Set
+	busyWorkers		*hashset.Set
 }
 
 var (
@@ -33,7 +38,7 @@ var (
 
 func NewSigo() *Sigo {
 	return &Sigo {
-		workers:      make(map[*websocket.Conn]*Worker),
+		workers:      []*Worker{},
 		incomingJobs: make(chan *Job),
 		pool:		  initPool(),
 	}
@@ -101,6 +106,12 @@ func (sigo *Sigo) Enqueue(job *Job) error {
 	return nil
 }
 
+// func (sigo *Sigo) AddQueues(queues map[string]int) error {
+// 	for k, v := range queues {
+
+// 	}
+// }
+
 func (sigo *Sigo) Dequeue(queue string) (*Job, error) {
 	conn := sigo.pool.Get()
 	defer conn.Close()
@@ -122,6 +133,17 @@ func (sigo *Sigo) Dequeue(queue string) (*Job, error) {
 	return &job, nil
 }
 
+func (sigo *Sigo) getFreeWorker() *Worker {
+	for {
+		workers := sigo.freeWorkers.Values()
+		if len(workers) == 0 {
+			continue
+		} else {
+			return workers[rand.Int() % len(workers)].(*Worker)
+		}
+	}
+}
+
 func publish(w http.ResponseWriter, r *http.Request) {
 	var data Job
 
@@ -134,12 +156,16 @@ func publish(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Println(data)
-	// _ = sigo.Enqueue(data)
+	err = sigo.Enqueue(&data)
 
+	if err != nil {
+		fmt.Println("error in enqueuing jobs")
+	} else {
+		fmt.Println("success in enqueuing jobs")
+	}
 }
 
 func consume(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("reached here")
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("websocket connection failed")
@@ -164,15 +190,27 @@ func ping(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "route %s doesn't exist", r.URL.Path[1:])
 }
 
+func config(w http.ResponseWriter, r *http.Request) {
+	var data map[string]int
+
+	b, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
+
+	err = json.Unmarshal(b, &data)
+	if err != nil {
+		return
+	}
+
+	// err = sigo.AddQueues()
+}
+
 func main() {
 	// handle not found
 	http.HandleFunc("/", ping)
-
-	// sigo handles a push-job
 	http.HandleFunc("/publish", publish)
-
-	// sigo handles a worker connection
 	http.HandleFunc("/consume", consume)
+
+	// http.HandleFunc("/config", config)
 
 	fmt.Println("server listening on port 3000")
 
