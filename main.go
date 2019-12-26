@@ -10,8 +10,8 @@ import (
 	"time"
 	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/gomodule/redigo/redis"
-	wr "github.com/mroth/weightedrand"
 	"math/rand"
+	"sync"
 )
 
 // Sigo ..
@@ -20,9 +20,10 @@ type Sigo struct {
 	incomingJobs 	chan *Job
 	pool		 	*redis.Pool
 	jobQueues	 	map[string]int
-	queueChooser	wr.Chooser
+	queueChooser	*Chooser
 	freeWorkers		*hashset.Set
 	busyWorkers		*hashset.Set
+	mtx				sync.Mutex
 }
 
 var (
@@ -106,11 +107,13 @@ func (sigo *Sigo) Enqueue(job *Job) error {
 	return nil
 }
 
-// func (sigo *Sigo) AddQueues(queues map[string]int) error {
-// 	for k, v := range queues {
-
-// 	}
-// }
+func (sigo *Sigo) AddQueues(queues map[string]int) {
+	var choices []Choice
+	for k, v := range queues {
+		choices = append(choices, Choice{Item: k, Weight: uint(v)})
+	}
+	sigo.queueChooser = NewChooser(choices)
+}
 
 func (sigo *Sigo) Dequeue(queue string) (*Job, error) {
 	conn := sigo.pool.Get()
@@ -144,6 +147,12 @@ func (sigo *Sigo) getFreeWorker() *Worker {
 	}
 }
 
+func (sigo *Sigo) AddFreeWorker(worker *Worker) {
+	sigo.mtx.Lock()
+	sigo.freeWorkers.Add(worker)
+	sigo.mtx.Unlock()
+}
+
 func publish(w http.ResponseWriter, r *http.Request) {
 	var data Job
 
@@ -152,16 +161,12 @@ func publish(w http.ResponseWriter, r *http.Request) {
 
 	err = json.Unmarshal(b, &data)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 
-	fmt.Println(data)
 	err = sigo.Enqueue(&data)
-
 	if err != nil {
-		fmt.Println("error in enqueuing jobs")
-	} else {
-		fmt.Println("success in enqueuing jobs")
+		log.Println("error in enqueuing jobs")
 	}
 }
 
@@ -183,12 +188,16 @@ func consume(w http.ResponseWriter, r *http.Request) {
 		utilization:   100,
 	}
 
+	sigo.AddFreeWorker(worker)
 	go worker.Run()
 }
 
 func ping(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "route %s doesn't exist", r.URL.Path[1:])
 }
+
+// A standart config body would look like :- 
+// { "high": "4", "normal": "2", "low": "1" }
 
 func config(w http.ResponseWriter, r *http.Request) {
 	var data map[string]int
@@ -201,18 +210,19 @@ func config(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// err = sigo.AddQueues()
+	sigo.AddQueues(data)
 }
 
 func main() {
+
+	rand.Seed(time.Now().UTC().UnixNano())
+
 	// handle not found
 	http.HandleFunc("/", ping)
 	http.HandleFunc("/publish", publish)
 	http.HandleFunc("/consume", consume)
-
-	// http.HandleFunc("/config", config)
+	http.HandleFunc("/config", config)
 
 	fmt.Println("server listening on port 3000")
-
 	http.ListenAndServe(":3000", nil)
 }

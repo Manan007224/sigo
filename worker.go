@@ -10,6 +10,12 @@ import (
 	"fmt"
 )
 
+const(
+	POLLING_INTERVAL = 60
+	SECONDS = 1000000000
+	MAX_UTILIZATION = 100
+)
+
 // Worker ..
 type Worker struct {
 	sigo          *Sigo
@@ -50,11 +56,24 @@ func (w *Worker) write_message(msgType int, msg []byte) error {
 	return w.conn.WriteMessage(msgType, msg)
 }
 
+func (w *Worker) check_utilization() {
+	sigo.mtx.Lock()
+	defer sigo.mtx.Unlock()
+
+	if(w.utilization >= MAX_UTILIZATION && sigo.freeWorkers.Contains(w)) {
+		sigo.freeWorkers.Remove(w)
+		sigo.busyWorkers.Add(w)
+	} else if(sigo.busyWorkers.Contains(w)) {
+		sigo.freeWorkers.Add(w)
+		sigo.busyWorkers.Remove(w)
+	}
+}
+
 func (w *Worker) heartbeat_client_worker() {
 	for {
 		// check for the last hearbeat
 		latestHeartBeat := time.Now()
-		if int(latestHeartBeat.Sub(w.lastHeartBeat))/1000000000 > 60 {
+		if int(latestHeartBeat.Sub(w.lastHeartBeat)) / SECONDS > POLLING_INTERVAL {
 			w.workerTimeout <- true
 		}
 
@@ -69,13 +88,14 @@ func (w *Worker) heartbeat_client_worker() {
 			fmt.Println(msg)
 			w.lastHeartBeat = time.Now()
 			w.utilization, _ = strconv.Atoi(strings.Split(msg, "-")[1])
+			w.check_utilization()
 
 			err = w.write_message(websocket.TextMessage, []byte("ack"))
 			if err != nil {
 				log.Println("Write Error: ", err)
 				break
 			}
-			time.Sleep(3 * time.Second)
+			time.Sleep(POLLING_INTERVAL * time.Second)
 		}
 	}
 }

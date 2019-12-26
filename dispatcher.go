@@ -19,7 +19,7 @@ func (disp *Dispatcher) Start() {
 		for {
 			queue := sigo.queueChooser.Pick().(string)
 			job, err := sigo.Dequeue(queue)
-			if err != nil || job == nil {
+			if err != nil {
 				continue
 			}
 			disp.jobChan <- job
