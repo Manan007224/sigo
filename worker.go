@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"encoding/json"
 )
 
 const(
@@ -30,6 +31,7 @@ type Worker struct {
 // Run ..
 func (w *Worker) Run() {
 
+	go w.read_messages()
 	go w.heartbeat_client_worker()
 
 	for {
@@ -68,6 +70,49 @@ func (w *Worker) check_utilization() {
 	}
 }
 
+func (w *Worker) listen_for_incoming_jobs() {
+	for {
+		select {
+		case job := <- w.jobChan:
+			b, err := json.Marshal(job)
+			if err != nil {
+				log.Println("error in marshalling job: %s", job)
+			}
+			err = w.write_message(websocket.TextMessage, b)
+			if err != nil {
+				continue
+			}
+		}
+	}
+}
+
+func (w *Worker) read_messages() {
+	for {
+		_, bytes, err := w.read_message()
+		if err != nil {
+			log.Println("read err", err)
+			break
+		}
+		msg := string(bytes[:])
+
+		// processing various messages
+		switch {
+		case strings.Contains(msg, "utilization"):
+			w.update_utilization(msg)
+		case strings.Contains(msg, "job"):
+			w.handle_job_response(msg)
+		}
+	}
+}
+
+func (w *Worker) update_utilization(msg string) {
+	w.utilization, _ = strconv.Atoi(strings.Split(msg, "-")[1])
+}
+
+func (w *Worker) handle_job_response(msg string) {
+	// TODO
+}
+
 func (w *Worker) heartbeat_client_worker() {
 	for {
 		// check for the last hearbeat
@@ -76,24 +121,14 @@ func (w *Worker) heartbeat_client_worker() {
 			w.workerTimeout <- true
 		}
 
-		msgType, bytes, err := w.read_message()
+		w.lastHeartBeat = time.Now()
+		w.check_utilization()
+
+		err := w.write_message(websocket.TextMessage, []byte("ack"))
 		if err != nil {
-			log.Println("read err", err)
+			log.Println("Write Error: ", err)
 			break
-		} 
-		msg := string(bytes[:])
-
-		if msgType == websocket.TextMessage {
-			w.lastHeartBeat = time.Now()
-			w.utilization, _ = strconv.Atoi(strings.Split(msg, "-")[1])
-			w.check_utilization()
-
-			err = w.write_message(websocket.TextMessage, []byte("ack"))
-			if err != nil {
-				log.Println("Write Error: ", err)
-				break
-			}
-			time.Sleep(POLLING_INTERVAL * time.Second)
 		}
+		time.Sleep(POLLING_INTERVAL * time.Second)
 	}
 }
