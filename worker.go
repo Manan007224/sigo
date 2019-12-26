@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"fmt"
 )
 
 const(
@@ -85,7 +84,6 @@ func (w *Worker) heartbeat_client_worker() {
 		msg := string(bytes[:])
 
 		if msgType == websocket.TextMessage {
-			fmt.Println(msg)
 			w.lastHeartBeat = time.Now()
 			w.utilization, _ = strconv.Atoi(strings.Split(msg, "-")[1])
 			w.check_utilization()

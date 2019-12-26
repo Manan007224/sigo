@@ -42,6 +42,8 @@ func NewSigo() *Sigo {
 		workers:      []*Worker{},
 		incomingJobs: make(chan *Job),
 		pool:		  initPool(),
+		freeWorkers:  hashset.New(),
+		busyWorkers:  hashset.New(),
 	}
 }
 
@@ -96,11 +98,6 @@ func (sigo *Sigo) Enqueue(job *Job) error {
 
 	// TODO - failover mechanism
 	_, err = conn.Do("RPUSH", queue, value)
-	if err != nil {
-		fmt.Errorf("enqueue failed for the job: %s", job)
-	}
-
-	_, err = conn.Do("SADD", sigo.jobQueues, queue)	
 	if err != nil {
 		fmt.Errorf("enqueue failed for the job: %s", job)
 	}
@@ -167,6 +164,8 @@ func publish(w http.ResponseWriter, r *http.Request) {
 	err = sigo.Enqueue(&data)
 	if err != nil {
 		log.Println("error in enqueuing jobs")
+	} else {
+		log.Println("success in enqueuing jobs")
 	}
 }
 
@@ -213,11 +212,22 @@ func config(w http.ResponseWriter, r *http.Request) {
 	sigo.AddQueues(data)
 }
 
+func startDispatcher() {
+	dispatcher := NewDispatcher(sigo)
+	for {
+		if(sigo.queueChooser != nil) {
+			dispatcher.Start()
+			break
+		}
+	}
+}
+
 func main() {
 
 	rand.Seed(time.Now().UTC().UnixNano())
+	
+	go startDispatcher()
 
-	// handle not found
 	http.HandleFunc("/", ping)
 	http.HandleFunc("/publish", publish)
 	http.HandleFunc("/consume", consume)
