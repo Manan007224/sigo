@@ -14,6 +14,7 @@ const(
 	POLLING_INTERVAL = 60
 	SECONDS = 1000000000
 	MAX_UTILIZATION = 100
+	PROCESSING_QUEUE = "processing"
 )
 
 // Worker ..
@@ -78,6 +79,12 @@ func (w *Worker) listen_for_incoming_jobs() {
 			if err != nil {
 				log.Println("error in marshalling job: %s", job)
 			}
+
+			err = w.sigo.Enqueue(PROCESSING_QUEUES)
+			if err != nil {
+				continue
+			}
+
 			err = w.write_message(websocket.TextMessage, b)
 			if err != nil {
 				continue
@@ -94,7 +101,6 @@ func (w *Worker) read_messages() {
 			break
 		}
 		msg := string(bytes[:])
-
 		// processing various messages
 		switch {
 		case strings.Contains(msg, "utilization"):
@@ -110,7 +116,17 @@ func (w *Worker) update_utilization(msg string) {
 }
 
 func (w *Worker) handle_job_response(msg string) {
-	// TODO
+	job, _ := w.sigo.Decode([]byte(msg))
+	switch {
+	case job["result"] == "ok":
+		// TODO
+	case job["result"] == "failed":
+		w.handle_job_failed()
+	}
+}
+
+func (w *Worker) handle_job_failed(job Job) {
+	
 }
 
 func (w *Worker) heartbeat_client_worker() {

@@ -73,8 +73,8 @@ func (sigo *Sigo) Encode(item interface{}) (string, error) {
 	return string(b), nil
 }
 
-func (sigo *Sigo) Decode(data []byte) (map[string]interface{}, error) {
-	var b map[string]interface{}
+func (sigo *Sigo) Decode(data []byte) (Job, error) {
+	var b Job
 	if err := json.Unmarshal(data, &b); err != nil {
 		return b, fmt.Errorf("decode data failed: %s", err)
 	}

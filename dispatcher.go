@@ -18,7 +18,8 @@ func (disp *Dispatcher) Start() {
 		// choose a random queue based on their priority
 		for {
 			queue := sigo.queueChooser.Pick().(string)
-			job, err := sigo.Dequeue(queue)
+			job, err := sigo.Dequeue(queue)			
+
 			if err != nil {
 				continue
 			}

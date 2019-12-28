@@ -1,20 +1,26 @@
 package main
 
+import (
+	"time"
+)
 
-// Job ..
+
 type Job struct {
 	Jid              string
 	Name             string
 	Args             map[string]interface{}
 	Queue			 string
+	Retry			 int
+	Timestamp		 int64
 }
 
-// NewJob ..
-func NewJob(jid, name, queue string, args map[string]interface{}) *Job {
+func NewJob(jid, name, queue string, retry int, args map[string]interface{}) *Job {
 	return &Job{
 		Jid:  	jid,
 		Name: 	name,
 		Args: 	args,
-		Queue:	queue,		  
+		Queue:	queue,
+		Retry:  retry,
+		Timestamp: time.Now().Unix()
 	}
 }
