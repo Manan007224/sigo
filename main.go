@@ -14,6 +14,8 @@ import (
 	"sync"
 )
 
+const SCHEDULED_QUEUE = "scheduled"
+
 // Sigo ..
 type Sigo struct {
 	workers 		[]*Worker
@@ -73,23 +75,18 @@ func (sigo *Sigo) Encode(item interface{}) (string, error) {
 	return string(b), nil
 }
 
-func (sigo *Sigo) Decode(data []byte) (Job, error) {
+func (sigo *Sigo) Decode(data []byte) (*Job, error) {
 	var b Job
 	if err := json.Unmarshal(data, &b); err != nil {
-		return b, fmt.Errorf("decode data failed: %s", err)
+		return nil, fmt.Errorf("decode data failed: %s", err)
 	}
 
-	return b, nil
+	return &b, nil
 }
 
-func (sigo *Sigo) Enqueue(job *Job) error {
+func (sigo *Sigo) Enqueue(queue string, job *Job) error {
 	conn := sigo.pool.Get()
 	defer conn.Close()
-
-	queue := job.Queue
-	if queue == "" {
-		return fmt.Errorf("Job doesn't have a queue")
-	}
 
 	value, err := sigo.Encode(job)
 	if err != nil {
@@ -133,6 +130,51 @@ func (sigo *Sigo) Dequeue(queue string) (*Job, error) {
 	return &job, nil
 }
 
+func (sigo *Sigo) ZRangeByScore(timestamp int64) ([]string, error) {
+	conn := sigo.pool.Get()
+	defer conn.Close()
+
+	data, err := redis.Strings(conn.Do("ZRANGEBYSCORE", SCHEDULED_QUEUE, "-inf", timestamp))
+	if err != nil {
+		return nil, fmt.Errorf("errror in finding all the jobs: %s", err)
+	}
+	return data, nil
+}
+
+func (sigo *Sigo) ZRemByScore(timestamp int64) ([]string, error) {
+	conn := sigo.pool.Get()
+	defer conn.Close()
+
+	jobs, err := sigo.ZRangeByScore(timestamp)
+	if err != nil {
+		return nil, fmt.Errorf("error in zrangebyscore: %s", err)
+	}
+
+	// remove all the jobs
+	_, err = conn.Do("ZREMRANGEBYSCORE", SCHEDULED_QUEUE, "-inf", timestamp)
+	if err != nil {
+		return nil, fmt.Errorf("error in zremrangebyscore: %s", err)
+	}
+
+	return jobs, nil
+}	
+
+func (sigo *Sigo) Zadd(queue string, key int64, value *Job) error {
+	conn := sigo.pool.Get()
+	defer conn.Close()
+
+	job, err := sigo.Encode(value)
+	if err != nil {
+		return fmt.Errorf("error in encoding job: %s", value)
+	}
+
+	_, err = conn.Do("ZADD", queue, key, job)
+	if err != nil {
+		fmt.Errorf("error in pushing job: %s", err)
+	}
+	return nil
+}
+
 func (sigo *Sigo) getFreeWorker() *Worker {
 	for {
 		workers := sigo.freeWorkers.Values()
@@ -161,7 +203,7 @@ func publish(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 	}
 
-	err = sigo.Enqueue(&data)
+	err = sigo.Enqueue(data.Queue, &data)
 	if err != nil {
 		log.Println("error in enqueuing jobs")
 	} else {

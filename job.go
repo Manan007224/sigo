@@ -12,6 +12,7 @@ type Job struct {
 	Queue			 string
 	Retry			 int
 	Timestamp		 int64
+	Result 			 string
 }
 
 func NewJob(jid, name, queue string, retry int, args map[string]interface{}) *Job {
@@ -21,6 +22,7 @@ func NewJob(jid, name, queue string, retry int, args map[string]interface{}) *Jo
 		Args: 	args,
 		Queue:	queue,
 		Retry:  retry,
-		Timestamp: time.Now().Unix()
+		Timestamp: time.Now().Unix(),
+		Result: "unprocessed",
 	}
 }

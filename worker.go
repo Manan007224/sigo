@@ -80,7 +80,8 @@ func (w *Worker) listen_for_incoming_jobs() {
 				log.Println("error in marshalling job: %s", job)
 			}
 
-			err = w.sigo.Enqueue(PROCESSING_QUEUES)
+			// TODO (add another goroutine in the future to swipe out jobs every 10s)
+			err = w.sigo.Enqueue(PROCESSING_QUEUE, job)
 			if err != nil {
 				continue
 			}
@@ -118,15 +119,25 @@ func (w *Worker) update_utilization(msg string) {
 func (w *Worker) handle_job_response(msg string) {
 	job, _ := w.sigo.Decode([]byte(msg))
 	switch {
-	case job["result"] == "ok":
+	case job.Result == "ok":
 		// TODO
-	case job["result"] == "failed":
-		w.handle_job_failed()
+	case job.Result == "failed":
+		w.handle_job_failed(job)
 	}
 }
 
-func (w *Worker) handle_job_failed(job Job) {
-	
+
+// push the job to the delayed queue
+func (w *Worker) handle_job_failed(job *Job) {
+	if job.Retry > 0 {
+		job.Retry -= 1
+		current_time := time.Now().Add(2 * time.Second)
+		key := current_time.Unix()
+		err := w.sigo.Zadd("scheduled", key, job)
+		if err != nil {
+			log.Println("job failed to add to scheduled queue: %s", err)
+		}
+	}
 }
 
 func (w *Worker) heartbeat_client_worker() {
