@@ -12,6 +12,9 @@ import (
 	"github.com/gomodule/redigo/redis"
 	"math/rand"
 	"sync"
+	"github.com/Sirupsen/logrus"
+	"os"
+	"strconv"
 )
 
 const SCHEDULED_QUEUE = "scheduled"
@@ -37,6 +40,7 @@ var (
 		},
 	}
 	sigo = NewSigo()
+	logger = NewLogger()
 )
 
 func NewSigo() *Sigo {
@@ -47,6 +51,12 @@ func NewSigo() *Sigo {
 		freeWorkers:  hashset.New(),
 		busyWorkers:  hashset.New(),
 	}
+}
+
+func NewLogger() *logrus.Logger {
+	logger := logrus.New()
+	logger.Out = os.Stdout
+	return logger
 }
 
 func initPool() *redis.Pool {
@@ -203,11 +213,21 @@ func publish(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 	}
 
-	err = sigo.Enqueue(data.Queue, &data)
+	if data.Enqueue_at != "" {
+		key, _ := strconv.ParseInt(data.Enqueue_at, 10, 64)
+		err = sigo.Zadd("scheduled", key, &data)
+	} else {
+		err = sigo.Enqueue(data.Queue, &data)
+	}
+
 	if err != nil {
 		log.Println("error in enqueuing jobs")
 	} else {
-		log.Println("success in enqueuing jobs")
+		if data.Enqueue_at != "" { 
+			data.QueueLog("scheduled")
+		} else {
+			data.QueueLog(data.Queue)
+		}
 	}
 }
 
@@ -227,6 +247,7 @@ func consume(w http.ResponseWriter, r *http.Request) {
 		workerTimeout: make(chan bool),
 		lastHeartBeat: time.Now(),
 		utilization:   100,
+		logger:		   logger,
 	}
 
 	sigo.AddFreeWorker(worker)
@@ -255,7 +276,7 @@ func config(w http.ResponseWriter, r *http.Request) {
 }
 
 func startDispatcher() {
-	dispatcher := NewDispatcher(sigo)
+	dispatcher := NewDispatcher(sigo, logger)
 	for {
 		if(sigo.queueChooser != nil) {
 			dispatcher.Start()

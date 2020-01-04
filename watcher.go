@@ -47,6 +47,7 @@ func (w *Watcher) listen_for_incoming_jobs() {
 		select {
 		case job := <-w.jobChan:
 			// put the job to the enqueue queue again
+			job.QueueLog(job.Queue)
 			w.sigo.Enqueue(job.Queue, job)
 		}
 	}

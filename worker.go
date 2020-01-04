@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 	"encoding/json"
+	"github.com/Sirupsen/logrus"
 )
 
 const(
@@ -27,23 +28,7 @@ type Worker struct {
 	mtx           sync.Mutex
 	utilization   int
 	host          string
-}
-
-// Run ..
-func (w *Worker) Run() {
-
-	go w.read_messages()
-	go w.heartbeat_client_worker()
-
-	for {
-		select {
-		case job := <-w.jobChan:
-			log.Println(job)
-		case <-w.workerTimeout:
-			w.conn.Close()
-			return
-		}
-	}
+	logger		  *logrus.Logger
 }
 
 func (w *Worker) read_message() (int, []byte, error) {
@@ -71,7 +56,11 @@ func (w *Worker) check_utilization() {
 	}
 }
 
-func (w *Worker) listen_for_incoming_jobs() {
+func (w *Worker) Run() {
+
+	go w.read_messages()
+	go w.heartbeat_client_worker()
+
 	for {
 		select {
 		case job := <- w.jobChan:
@@ -84,12 +73,18 @@ func (w *Worker) listen_for_incoming_jobs() {
 			err = w.sigo.Enqueue(PROCESSING_QUEUE, job)
 			if err != nil {
 				continue
+			} else {
+				job.QueueLog("processing")
 			}
 
 			err = w.write_message(websocket.TextMessage, b)
 			if err != nil {
 				continue
 			}
+		case <-w.workerTimeout:
+			log.Println("worker closing: ", w)
+			w.conn.Close()
+			return
 		}
 	}
 }
@@ -120,8 +115,9 @@ func (w *Worker) handle_job_response(msg string) {
 	job, _ := w.sigo.Decode([]byte(msg))
 	switch {
 	case job.Result == "ok":
-		// TODO
+		log.Println("job: %s successfull", job.Jid)
 	case job.Result == "failed":
+		log.Println("job: %s failed", job.Jid)
 		w.handle_job_failed(job)
 	}
 }
@@ -135,7 +131,7 @@ func (w *Worker) handle_job_failed(job *Job) {
 		key := current_time.Unix()
 		err := w.sigo.Zadd("scheduled", key, job)
 		if err != nil {
-			log.Println("job failed to add to scheduled queue: %s", err)
+			log.Println("job: %s failed to add to scheduled queue", job.Jid)
 		}
 	}
 }
