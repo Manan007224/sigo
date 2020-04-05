@@ -1,0 +1,63 @@
+syntax = "proto3";
+package protobuf;
+
+message DiscoverReply {}
+message EmptyReply {}
+message FetchRequest {}
+
+message ClientConfig {
+    string id = 1;
+    string type = 2;
+}
+
+message Ack {
+    bool ok = 1;
+}
+
+message JobPayload {
+    string jid = 1;
+    string name = 2;
+    map<string, Param> args = 3;
+    int32 retry = 4;
+    int64 timestamp = 5;
+    int64 enqueue_at = 6;
+    int64 reserve_for = 7;
+    string queue = 8;
+}
+
+message Param {
+    string type = 1;
+    bytes value = 2;
+}
+
+message Queue {
+    string name = 1;
+}
+
+message Job {
+    string id = 1;
+}
+
+message FailPayload {
+    string id = 1;
+    string errorMessage = 2;
+    string errorType = 3;
+    repeated string backtrace = 4;
+}
+
+message Ping {
+    string message = 1;
+}
+
+message Pong {
+    string message = 2;
+}
+
+service Scheduler {
+    rpc Discover(ClientConfig) returns (DiscoverReply) {}
+    rpc BroadCast(stream JobPayload) returns (Ack) {}
+    rpc Fetch(Queue) returns (JobPayload) {}
+    rpc Acknowledge(Job) returns (EmptyReply) {}
+    rpc Fail(FailPayload) returns (EmptyReply) {}
+    rpc HeartBeat(stream Ping) returns (stream Pong) {}
+}

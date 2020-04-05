@@ -1,2 +1,0 @@
-# github.com/gorilla/websocket v1.4.1
-github.com/gorilla/websocket
