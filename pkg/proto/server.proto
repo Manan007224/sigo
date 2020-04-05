@@ -8,6 +8,12 @@ message FetchRequest {}
 message ClientConfig {
     string id = 1;
     string type = 2;
+    repeated QueueConfig queues = 3;
+}
+
+message QueueConfig {
+    string name = 1;
+    int32 priority = 2;
 }
 
 message Ack {
