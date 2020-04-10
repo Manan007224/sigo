@@ -20,12 +20,15 @@ message Ack {
     bool ok = 1;
 }
 
+message Execution {
+    int64 startedAt = 1;
+}
+
 message JobPayload {
     string jid = 1;
     string name = 2;
     map<string, Param> args = 3;
     int32 retry = 4;
-    int64 timestamp = 5;
     int64 enqueue_at = 6;
     int64 reserve_for = 7;
     string queue = 8;
