@@ -11,5 +11,6 @@ const (
 
 var (
 	protoMarshalErr    = fmt.Errorf("error in marshaling job")
-	strToFloatParseErr = fmt.Errorf("error in converting timestamp to ")
+	protoUnMarshalErr  = fmt.Errorf("error in unmarshalling job")
+	strToFloatParseErr = fmt.Errorf("error in converting timestamp to float")
 )

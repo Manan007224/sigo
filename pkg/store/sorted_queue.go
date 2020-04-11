@@ -73,26 +73,13 @@ func (queue *SortedQueue) remove(value string, jid string) error {
 	return nil
 }
 
-func (queue *SortedQueue) Remove(jid string, timestamp int64) error {
-	values, err := queue.find(timestamp, false)
+func (queue *SortedQueue) Remove(job *pb.JobPayload, timestamp int64) error {
+	payload, err := proto.Marshal(job)
 	if err != nil {
+		return protoMarshalErr
+	}
+	if err = queue.remove(string(payload), job.Jid); err != nil {
 		return err
-	}
-	if len(values) == 0 {
-		log.Println("job has already been removed")
-		return nil
-	}
-	for _, value := range values {
-		var job pb.JobPayload
-		if err = proto.Unmarshal([]byte(value), &job); err != nil {
-			log.Println("job unmarshal error")
-		}
-		if job.Jid == jid {
-			if err = queue.remove(value, job.Jid); err != nil {
-				return err
-			}
-			break
-		}
 	}
 	return nil
 }
@@ -104,6 +91,34 @@ func (queue *SortedQueue) Size() (int64, error) {
 func (queue *SortedQueue) SizeByKey(key int64) (int64, error) {
 	values, err := queue.find(key, false)
 	return int64(len(values)), err
+}
+
+func (queue *SortedQueue) MoveTo(to *Queue, timestamp int64) error {
+	tm := strconv.FormatInt(timestamp, 10)
+	values, err := queue.find(timestamp, true)
+	if err != nil {
+		return err
+	}
+
+	var result *redis.IntCmd
+	if _, err = queue.Client.TxPipelined(func(pipe redis.Pipeliner) error {
+		result = pipe.ZRemRangeByScore(queue.Name, "-inf", tm)
+		for _, value := range values {
+			pipe.LPush(to.Name, []byte(value))
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	count, err := result.Result()
+	if err != nil {
+		return err
+	}
+
+	log.Printf("%d jobs moved from %s --> %s", count, queue.Name, to.Name)
+
+	return nil
 }
 
 func (queue *SortedQueue) MoveToSorted(name string, timestamp int64) error {

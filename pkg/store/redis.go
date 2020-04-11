@@ -32,7 +32,7 @@ func NewStore(queueConfig []pb.QueueConfig) (*Store, error) {
 		queueMap[queue.Name] = &Queue{
 			Name:     queue.Name,
 			Priority: queue.Priority,
-			client:   redisClient,
+			Client:   redisClient,
 		}
 	}
 

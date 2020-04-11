@@ -11,4 +11,4 @@ protoc:
 
 test:
 	@go test -v ${MOD_FLAG} \
-	`go list ./pkg/...` 2>&1
+	`go list ./pkg/...` 2>&1 -count=1
