@@ -62,7 +62,7 @@ message Pong {
     string message = 2;
 }
 
-service Scheduler {
+service Sigo {
     rpc Discover(ClientConfig) returns (DiscoverReply) {}
     rpc BroadCast(stream JobPayload) returns (Ack) {}
     rpc Fetch(Queue) returns (JobPayload) {}
