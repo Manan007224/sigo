@@ -29,7 +29,7 @@ func (queue *SortedQueue) Add(job *pb.JobPayload) error {
 }
 
 func (queue *SortedQueue) Find(jid string, timestamp int64) (bool, error) {
-	values, err := queue.find(timestamp)
+	values, err := queue.find(timestamp, false)
 	if err != nil {
 		return false, err
 	}
@@ -49,10 +49,16 @@ func (queue *SortedQueue) Find(jid string, timestamp int64) (bool, error) {
 	return false, nil
 }
 
-func (queue *SortedQueue) find(timestamp int64) ([]string, error) {
+func (queue *SortedQueue) find(timestamp int64, isBeginning bool) ([]string, error) {
 	tm := strconv.FormatInt(timestamp, 10)
 	var result []string
-	result, err := queue.Client.ZRangeByScore(queue.Name, redis.ZRangeBy{Min: tm, Max: tm}).Result()
+
+	startTime := tm
+	if isBeginning {
+		startTime = "-inf"
+	}
+
+	result, err := queue.Client.ZRangeByScore(queue.Name, redis.ZRangeBy{Min: startTime, Max: tm}).Result()
 	if err != nil {
 		return result, errors.Wrapf(err, "failed to find jobs with the timestmap: %d", timestamp)
 	}
@@ -68,7 +74,7 @@ func (queue *SortedQueue) remove(value string, jid string) error {
 }
 
 func (queue *SortedQueue) Remove(jid string, timestamp int64) error {
-	values, err := queue.find(timestamp)
+	values, err := queue.find(timestamp, false)
 	if err != nil {
 		return err
 	}
@@ -96,13 +102,13 @@ func (queue *SortedQueue) Size() (int64, error) {
 }
 
 func (queue *SortedQueue) SizeByKey(key int64) (int64, error) {
-	values, err := queue.find(key)
+	values, err := queue.find(key, false)
 	return int64(len(values)), err
 }
 
 func (queue *SortedQueue) MoveToSorted(name string, timestamp int64) error {
 	tm := strconv.FormatInt(timestamp, 10)
-	values, err := queue.find(timestamp)
+	values, err := queue.find(timestamp, true)
 	if err != nil {
 		return err
 	}
@@ -111,7 +117,7 @@ func (queue *SortedQueue) MoveToSorted(name string, timestamp int64) error {
 	if _, err = queue.Client.TxPipelined(func(pipe redis.Pipeliner) error {
 		result = pipe.ZRemRangeByScore(queue.Name, "-inf", tm)
 		for _, value := range values {
-			pipe.ZAdd(queue.Name, redis.Z{Score: float64(timestamp), Member: value})
+			pipe.ZAdd(name, redis.Z{Score: float64(timestamp), Member: value})
 		}
 		return nil
 	}); err != nil {
