@@ -47,3 +47,11 @@ func NewStore(queueConfig []*pb.QueueConfig) (*Store, error) {
 		Queues:    queueMap,
 	}, nil
 }
+
+func (s *Store) Flush() {
+	s.client.FlushAll()
+}
+
+func (s *Store) Close() {
+	s.client.Close()
+}

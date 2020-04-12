@@ -13,13 +13,13 @@ import (
 // Manager is the interface which the scheduler uses to move around the jobs in redis
 // queues and execute some other client operations such as Fail, Acknowledge or Push.
 type Manager struct {
-	store *store.Store
+	Store *store.Store
 	wg    *sync.WaitGroup
 }
 
 func NewManager(queueConfig []*pb.QueueConfig) (*Manager, error) {
 	store, err := store.NewStore(queueConfig)
-	return &Manager{store: store}, err
+	return &Manager{Store: store}, err
 }
 
 // The scheduler is gRPC server and interacts often with the client, so any calls the scheduler
@@ -36,8 +36,13 @@ func (m *Manager) Do(task func() error) {
 	}(m.wg)
 }
 
+func (m *Manager) Flush() {
+	m.Store.Flush()
+}
+
 func (m *Manager) Shutdown() {
 	m.wg.Wait()
+	m.Store.Close()
 }
 
 func (m *Manager) Push(job *pb.JobPayload) error {
@@ -47,9 +52,9 @@ func (m *Manager) Push(job *pb.JobPayload) error {
 	}
 
 	if job.EnqueueAt == 0 {
-		return m.store.Queues[job.Queue].Add(job)
+		return m.Store.Queues[job.Queue].Add(job)
 	}
-	return m.store.Scheduled.Add(job)
+	return m.Store.Scheduled.Add(job)
 }
 
 func (m *Manager) Fail(job *pb.FailPayload) error {
@@ -60,52 +65,53 @@ func (m *Manager) Fail(job *pb.FailPayload) error {
 		job.Backtrace = job.Backtrace[:20]
 	}
 
-	failJob, ok := m.store.Cache.Load(job.Id)
+	failJob, ok := m.Store.Cache.Load(job.Id)
 	if !ok {
 		return fmt.Errorf("job with %s not found", job.Id)
 	}
-	m.store.Cache.Delete(job.Id)
-
-	if failJob.(*pb.Execution).Expiry > time.Now().Unix() {
+	m.Store.Cache.Delete(job.Id)
+	if failJob.(*pb.Execution).Expiry >= time.Now().Unix() {
+		job, err := m.Store.Working.FindJobById(job.Id, failJob.(*pb.Execution).Expiry)
+		if err != nil {
+			return err
+		}
 		if job.Retry > 0 {
-			job, err := m.store.Working.FindJobById(job.Id, failJob.(*pb.Execution).Expiry)
-			if err != nil {
-				return err
-			}
 			job.Retry--
+
+			// TODO - think about a better exponential retry enqueue logic.
+
 			// No need to remove the job from the working queue.
 			// The cron job will automatically remove the job.
-			m.store.Retry.Add(job)
+			return m.Store.Retry.AddJob(job, time.Now().Add(-5*time.Second).Unix())
 		}
 	}
-
 	return nil
 }
 
 func (m *Manager) Acknowledge(job *pb.JobPayload) error {
-	ackJob, ok := m.store.Cache.Load(job.Jid)
+	ackJob, ok := m.Store.Cache.Load(job.Jid)
 	if !ok {
 		return fmt.Errorf("job with %s not found", job.Jid)
 	}
-	m.store.Cache.Delete(job.Jid)
-	if ackJob.(*pb.Execution).Expiry > time.Now().Unix() {
-		return m.store.Working.Remove(job, ackJob.(*pb.Execution).Expiry)
+	m.Store.Cache.Delete(job.Jid)
+	if ackJob.(*pb.Execution).Expiry >= time.Now().Unix() {
+		return m.Store.Working.Remove(job, ackJob.(*pb.Execution).Expiry)
 	}
 	log.Println("[ACK] received after job expiry time")
 	return nil
 }
 
 func (m *Manager) Fetch(from string) error {
-	fetchJob, err := m.store.Queues[from].Remove()
+	fetchJob, err := m.Store.Queues[from].Remove()
 	if err != nil {
 		return err
 	}
-	if _, ok := m.store.Cache.Load(fetchJob.Jid); ok {
+	if _, ok := m.Store.Cache.Load(fetchJob.Jid); ok {
 		return fmt.Errorf("job with %s id already exists", fetchJob.Jid)
 	}
 	executionExpiry := time.Now().Add(time.Duration(fetchJob.ReserveFor) * time.Second).Unix()
-	m.store.Cache.Store(fetchJob.Jid, &pb.Execution{Expiry: executionExpiry})
-	if err = m.store.Working.Add(fetchJob); err != nil {
+	m.Store.Cache.Store(fetchJob.Jid, &pb.Execution{Expiry: executionExpiry})
+	if err = m.Store.Working.AddJob(fetchJob, executionExpiry); err != nil {
 		return err
 	}
 	return nil
@@ -113,13 +119,13 @@ func (m *Manager) Fetch(from string) error {
 
 // Move the jobs from scheduled -> enqueue queues.
 func (m *Manager) ProcessScheduledJobs(till int64) error {
-	jobs, err := m.store.Scheduled.Get(till)
+	jobs, err := m.Store.Scheduled.Get(till)
 	if err != nil {
 		log.Println("[ProcessScheduledJobs] error")
 		return err
 	}
 	for _, job := range jobs {
-		if err = m.store.Queues[job.Queue].Add(job); err != nil {
+		if err = m.Store.Queues[job.Queue].Add(job); err != nil {
 			log.Println("[ProcessScheduledJobs] error")
 		}
 	}
@@ -128,7 +134,7 @@ func (m *Manager) ProcessScheduledJobs(till int64) error {
 
 // Move the jobs from working -> retry queue
 func (m *Manager) ProcessExecutingJobs(till int64) error {
-	jobs, err := m.store.Working.Get(till)
+	jobs, err := m.Store.Working.Get(till)
 	if err != nil {
 		log.Println("[ProcessExecutingJobs] error")
 		return err
@@ -136,8 +142,8 @@ func (m *Manager) ProcessExecutingJobs(till int64) error {
 
 	for _, job := range jobs {
 		// check if the client has ACKed or Failed the job or not.
-		if _, ok := m.store.Cache.Load(job.Jid); ok {
-			if err = m.store.Retry.Add(job); err != nil {
+		if _, ok := m.Store.Cache.Load(job.Jid); ok {
+			if err = m.Store.Retry.Add(job); err != nil {
 				log.Println("[ProcessExecutingJobs] error")
 			}
 		}
@@ -146,7 +152,7 @@ func (m *Manager) ProcessExecutingJobs(till int64) error {
 }
 
 func (m *Manager) ProcessFailedJobs(till int64) error {
-	jobs, err := m.store.Retry.Get(till)
+	jobs, err := m.Store.Retry.Get(till)
 	if err != nil {
 		log.Println("[ProcessFailedJobs] error")
 		return err
@@ -156,8 +162,8 @@ func (m *Manager) ProcessFailedJobs(till int64) error {
 		if job.Retry == 0 {
 			continue
 		}
-		if _, ok := m.store.Cache.Load(job.Jid); ok {
-			if err = m.store.Queues[job.Queue].Add(job); err != nil {
+		if _, ok := m.Store.Cache.Load(job.Jid); ok {
+			if err = m.Store.Queues[job.Queue].Add(job); err != nil {
 				log.Println("[ProcessFailedJobs] error")
 			}
 		}
