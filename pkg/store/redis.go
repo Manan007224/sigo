@@ -1,6 +1,8 @@
 package store
 
 import (
+	"sync"
+
 	pb "github.com/Manan007224/sigo/pkg/proto"
 	"github.com/go-redis/redis"
 	"github.com/pkg/errors"
@@ -12,9 +14,10 @@ type Store struct {
 	Working   *SortedQueue
 	Retry     *SortedQueue
 	Queues    map[string]*Queue
+	Cache     sync.Map
 }
 
-func NewStore(queueConfig []pb.QueueConfig) (*Store, error) {
+func NewStore(queueConfig []*pb.QueueConfig) (*Store, error) {
 	// Explore a better way to create a client later
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",

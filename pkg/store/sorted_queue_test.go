@@ -100,19 +100,6 @@ var _ = Describe("SortedQueue", func() {
 			count, err = queue.Size()
 			Expect(count).Should(Equal(int64(30)))
 
-			regularQ := &Queue{
-				Name:     "reg-test",
-				Priority: 1,
-				Client:   client,
-			}
-
-			err = queue.MoveTo(regularQ, testTm.Unix())
-			count = regularQ.Size()
-			Expect(count).Should(Equal(int64(30)))
-
-			count, err = queue.Size()
-			Expect(count).Should(Equal(int64(0)))
-
 			// MoveToSorted function
 			currentTm := time.Now()
 			for i := 0; i < 30; i++ {

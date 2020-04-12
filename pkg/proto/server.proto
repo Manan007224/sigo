@@ -21,7 +21,7 @@ message Ack {
 }
 
 message Execution {
-    int64 startedAt = 1;
+    int64 expiry = 1;
 }
 
 message JobPayload {
@@ -51,7 +51,8 @@ message FailPayload {
     string id = 1;
     string errorMessage = 2;
     string errorType = 3;
-    repeated string backtrace = 4;
+    int32 retry = 4;
+    repeated string backtrace = 5;
 }
 
 message Ping {

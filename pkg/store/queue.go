@@ -25,6 +25,18 @@ func (queue *Queue) Add(job *pb.JobPayload) error {
 	return nil
 }
 
+func (queue *Queue) Remove() (*pb.JobPayload, error) {
+	payload, err := queue.Client.RPop(queue.Name).Result()
+	if err != nil {
+		return nil, err
+	}
+	var job pb.JobPayload
+	if err = proto.Unmarshal([]byte(payload), &job); err != nil {
+		return nil, protoUnMarshalErr
+	}
+	return &job, nil
+}
+
 // TODO - Research whether it's better idea to use Blocking pop.
 func (queue *Queue) MoveTo(to *SortedQueue) error {
 	if _, err := queue.Client.TxPipelined(func(pipe redis.Pipeliner) error {

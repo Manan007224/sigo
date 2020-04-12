@@ -17,11 +17,19 @@ type SortedQueue struct {
 }
 
 func (queue *SortedQueue) Add(job *pb.JobPayload) error {
+	return queue.add(job, job.EnqueueAt)
+}
+
+func (queue *SortedQueue) AddJob(job *pb.JobPayload, at int64) error {
+	return queue.add(job, at)
+}
+
+func (queue *SortedQueue) add(job *pb.JobPayload, timestamp int64) error {
 	payload, err := proto.Marshal(job)
 	if err != nil {
 		return protoMarshalErr
 	}
-	_, err = queue.Client.ZAdd(queue.Name, redis.Z{Score: float64(job.EnqueueAt), Member: payload}).Result()
+	_, err = queue.Client.ZAdd(queue.Name, redis.Z{Score: float64(timestamp), Member: payload}).Result()
 	if err != nil {
 		return errors.Wrapf(err, "failed to add job to sorted queue")
 	}
@@ -49,6 +57,27 @@ func (queue *SortedQueue) Find(jid string, timestamp int64) (bool, error) {
 	return false, nil
 }
 
+func (queue *SortedQueue) FindJobById(jid string, timestamp int64) (*pb.JobPayload, error) {
+	values, err := queue.find(timestamp, false)
+	if err != nil {
+		return nil, err
+	}
+	if len(values) == 0 {
+		log.Println("no values with the timestamp found")
+		return nil, nil
+	}
+	for _, value := range values {
+		var job pb.JobPayload
+		if err = proto.Unmarshal([]byte(value), &job); err != nil {
+			log.Println("job unmarshal error")
+		}
+		if job.Jid == jid {
+			return &job, nil
+		}
+	}
+	return nil, nil
+}
+
 func (queue *SortedQueue) find(timestamp int64, isBeginning bool) ([]string, error) {
 	tm := strconv.FormatInt(timestamp, 10)
 	var result []string
@@ -61,6 +90,23 @@ func (queue *SortedQueue) find(timestamp int64, isBeginning bool) ([]string, err
 	result, err := queue.Client.ZRangeByScore(queue.Name, redis.ZRangeBy{Min: startTime, Max: tm}).Result()
 	if err != nil {
 		return result, errors.Wrapf(err, "failed to find jobs with the timestmap: %d", timestamp)
+	}
+	return result, nil
+}
+
+func (queue *SortedQueue) Get(till int64) ([]*pb.JobPayload, error) {
+	var result []*pb.JobPayload
+	values, err := queue.find(till, true)
+	if err != nil {
+		return result, err
+	}
+
+	for _, val := range values {
+		var job pb.JobPayload
+		if err = proto.Unmarshal([]byte(val), &job); err != nil {
+			continue
+		}
+		result = append(result, &job)
 	}
 	return result, nil
 }
@@ -91,34 +137,6 @@ func (queue *SortedQueue) Size() (int64, error) {
 func (queue *SortedQueue) SizeByKey(key int64) (int64, error) {
 	values, err := queue.find(key, false)
 	return int64(len(values)), err
-}
-
-func (queue *SortedQueue) MoveTo(to *Queue, timestamp int64) error {
-	tm := strconv.FormatInt(timestamp, 10)
-	values, err := queue.find(timestamp, true)
-	if err != nil {
-		return err
-	}
-
-	var result *redis.IntCmd
-	if _, err = queue.Client.TxPipelined(func(pipe redis.Pipeliner) error {
-		result = pipe.ZRemRangeByScore(queue.Name, "-inf", tm)
-		for _, value := range values {
-			pipe.LPush(to.Name, []byte(value))
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	count, err := result.Result()
-	if err != nil {
-		return err
-	}
-
-	log.Printf("%d jobs moved from %s --> %s", count, queue.Name, to.Name)
-
-	return nil
 }
 
 func (queue *SortedQueue) MoveToSorted(name string, timestamp int64) error {
