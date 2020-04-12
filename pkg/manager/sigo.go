@@ -36,6 +36,10 @@ func (m *Manager) Do(task func() error) {
 	}(m.wg)
 }
 
+func (m *Manager) Shutdown() {
+	m.wg.Wait()
+}
+
 func (m *Manager) Push(job *pb.JobPayload) error {
 	job, err := m.validate(job)
 	if err != nil {

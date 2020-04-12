@@ -65,6 +65,10 @@ var _ = Describe("SortedQueue", func() {
 			keyCount, err := queue.SizeByKey(tm)
 			Expect(keyCount).Should(Equal(int64(30)))
 
+			// Test Get
+			jobs1, err := queue.Get(tm)
+			Expect(jobs1).Should(HaveLen(30))
+
 			// Test find
 			tm1 := time.Now().Add(1 * time.Minute).Unix()
 			testJob := CreateJob(strconv.Itoa(123), tm1)
