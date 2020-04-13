@@ -132,7 +132,7 @@ func (m *Manager) ProcessScheduledJobs(till int64) error {
 	return nil
 }
 
-// Move the jobs from working -> retry queue
+// Move the jobs from working -> retry or done queue
 func (m *Manager) ProcessExecutingJobs(till int64) error {
 	jobs, err := m.Store.Working.Get(till)
 	if err != nil {

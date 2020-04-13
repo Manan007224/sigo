@@ -1,6 +1,7 @@
 package manager_test
 
 import (
+	"strconv"
 	"time"
 
 	. "github.com/Manan007224/sigo/pkg/manager"
@@ -94,6 +95,38 @@ var _ = Describe("Sigo", func() {
 
 			Expect(err).ShouldNot(HaveOccurred())
 
+		})
+
+		Specify("Process Scheduled Jobs", func() {
+			tm := time.Now()
+			for i := 0; i < 10; i++ {
+				if i%2 == 0 {
+					mgr.Push(CreateJob(strconv.Itoa(i), tm.Unix(), "Low"))
+				} else {
+					mgr.Push(CreateJob(strconv.Itoa(i), tm.Unix(), "High"))
+				}
+			}
+			err = mgr.ProcessScheduledJobs(tm.Unix())
+			Expect(mgr.Store.Queues["High"].Size()).Should(Equal(int64(5)))
+			Expect(mgr.Store.Queues["Low"].Size()).Should(Equal(int64(5)))
+
+			for i := 0; i < 5; i++ {
+				if i%2 == 0 {
+					mgr.Fetch("High")
+					mgr.Fetch("Low")
+				}
+			}
+			count, err := mgr.Store.Working.Size()
+			Expect(count).Should(Equal(int64(6)))
+			err = mgr.ProcessExecutingJobs(tm.Add(5 * time.Second).Unix())
+			count, err = mgr.Store.Retry.Size()
+			Expect(count).Should(Equal(int64(6)))
+
+			err = mgr.ProcessFailedJobs(tm.Add(5 * time.Second).Unix())
+			count, err = mgr.Store.Retry.Size()
+			Expect(count).Should(Equal(int64(6)))
+
+			Expect(err).ShouldNot(HaveOccurred())
 		})
 	})
 })
