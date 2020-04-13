@@ -81,13 +81,14 @@ func (sc *Scheduler) BroadCast(context context.Context, job *pb.JobPayload) (*pb
 
 func (sc *Scheduler) HearBeat(stream pb.Scheduler_HeartBeatServer) error {
 	for {
-		if err := sc.checkClientOrServerContextClosed(stream.Context()); err != nil {
+		ctx := stream.Context()
+		if err := sc.checkClientOrServerContextClosed(ctx); err != nil {
 			return err
 		}
 
 		select {
-		case <-stream.Context().Done():
-			return stream.Context().Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		default:
 		}
 
@@ -101,8 +102,9 @@ func (sc *Scheduler) HearBeat(stream pb.Scheduler_HeartBeatServer) error {
 			if err == io.EOF {
 				return stream.SendAndClose(&pb.EmptyReply{})
 			}
+			return err
 		}
-		sc.heartBeatMonitor.Store(sc.getClientAddr(stream.Context()), time.Now().Unix())
+		sc.heartBeatMonitor.Store(sc.getClientAddr(ctx), time.Now().Unix())
 	}
 }
 
