@@ -1,9 +1,7 @@
 syntax = "proto3";
 package protobuf;
 
-message DiscoverReply {}
 message EmptyReply {}
-message FetchRequest {}
 
 message ClientConfig {
     string id = 1;
@@ -14,10 +12,6 @@ message ClientConfig {
 message QueueConfig {
     string name = 1;
     int32 priority = 2;
-}
-
-message Ack {
-    bool ok = 1;
 }
 
 message Execution {
@@ -56,18 +50,24 @@ message FailPayload {
 }
 
 message Ping {
-    string message = 1;
+    string msg = 1;
 }
 
 message Pong {
-    string message = 2;
+    string msg = 2;
 }
 
-service Sigo {
-    rpc Discover(ClientConfig) returns (DiscoverReply) {}
-    rpc BroadCast(stream JobPayload) returns (Ack) {}
+message JobPushReply {
+    string code = 1;
+    string error = 2;
+}
+
+
+service Scheduler {
+    rpc Discover(ClientConfig) returns (EmptyReply) {}
+    rpc BroadCast(JobPayload) returns (JobPushReply ) {}
     rpc Fetch(Queue) returns (JobPayload) {}
     rpc Acknowledge(JobPayload) returns (EmptyReply) {}
     rpc Fail(FailPayload) returns (EmptyReply) {}
-    rpc HeartBeat(stream Ping) returns (stream Pong) {}
+    rpc HeartBeat(stream Ping) returns (EmptyReply) {}
 }

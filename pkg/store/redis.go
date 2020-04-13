@@ -14,7 +14,7 @@ type Store struct {
 	Working   *SortedQueue
 	Retry     *SortedQueue
 	Queues    map[string]*Queue
-	Cache     sync.Map
+	Cache     *sync.Map
 }
 
 func NewStore(queueConfig []*pb.QueueConfig) (*Store, error) {
@@ -45,6 +45,7 @@ func NewStore(queueConfig []*pb.QueueConfig) (*Store, error) {
 		Working:   &SortedQueue{Name: "working", Client: redisClient},
 		Retry:     &SortedQueue{Name: "retry", Client: redisClient},
 		Queues:    queueMap,
+		Cache:     &sync.Map{},
 	}, nil
 }
 
@@ -54,4 +55,8 @@ func (s *Store) Flush() {
 
 func (s *Store) Close() {
 	s.client.Close()
+}
+
+func (s *Store) GetClient() *redis.Client {
+	return s.client
 }

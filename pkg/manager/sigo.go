@@ -19,7 +19,7 @@ type Manager struct {
 
 func NewManager(queueConfig []*pb.QueueConfig) (*Manager, error) {
 	store, err := store.NewStore(queueConfig)
-	return &Manager{Store: store}, err
+	return &Manager{Store: store, wg: &sync.WaitGroup{}}, err
 }
 
 // The scheduler is gRPC server and interacts often with the client, so any calls the scheduler
@@ -170,6 +170,16 @@ func (m *Manager) ProcessFailedJobs(till int64) error {
 	}
 
 	return nil
+}
+
+func (m *Manager) AddQueue(queues ...*pb.QueueConfig) {
+	for _, queue := range queues {
+		m.Store.Queues[queue.Name] = &store.Queue{
+			Name:     queue.Name,
+			Priority: queue.Priority,
+			Client:   m.Store.GetClient(),
+		}
+	}
 }
 
 func (m *Manager) validate(job *pb.JobPayload) (*pb.JobPayload, error) {
