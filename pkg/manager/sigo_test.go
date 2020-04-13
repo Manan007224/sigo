@@ -58,7 +58,7 @@ var _ = Describe("Sigo", func() {
 			Expect(count).Should(Equal(int64(1)))
 
 			// Test Fetch
-			err = mgr.Fetch("High")
+			_, err = mgr.Fetch("High")
 			count = mgr.Store.Queues["High"].Size()
 			Expect(count).Should(Equal(int64(0)))
 			count, err = mgr.Store.Working.Size()
@@ -74,7 +74,7 @@ var _ = Describe("Sigo", func() {
 			Expect(ok).Should(BeFalse())
 
 			err = mgr.Push(highJob1)
-			err = mgr.Fetch("High")
+			_, err = mgr.Fetch("High")
 			count, err = mgr.Store.Working.Size()
 			Expect(count).Should(Equal(int64(1)))
 

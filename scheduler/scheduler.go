@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -13,11 +14,9 @@ import (
 	"google.golang.org/grpc/peer"
 )
 
-const (
-	JOBACK       = "1"
-	JOBERROR     = "2"
-	DISCONNECTED = "3"
-	SERVERERROR  = "4"
+var (
+	clientContextClosed = fmt.Errorf("client context closed")
+	serverContextClosed = fmt.Errorf("server context closed")
 )
 
 type Scheduler struct {
@@ -54,32 +53,41 @@ func (sc *Scheduler) closeClientContext(rpcContext context.Context) {
 	sc.cancelMonitor[sc.getClientAddr(rpcContext)]()
 }
 
+func (sc *Scheduler) checkClientOrServerContextClosed(rpcContext context.Context) error {
+	select {
+	case <-sc.schedulerCtx.Done():
+		return serverContextClosed
+	case <-sc.getClientContextDone(rpcContext):
+		return clientContextClosed
+	default:
+		return nil
+	}
+}
+
 func (sc *Scheduler) Discover(context context.Context, clientConfig *pb.ClientConfig) (*pb.EmptyReply, error) {
 	return nil, nil
 }
 
-func (sc *Scheduler) BroadCast(context context.Context, job *pb.JobPayload) (*pb.JobPushReply, error) {
-	select {
-	case <-sc.schedulerCtx.Done():
-		return &pb.JobPushReply{Code: SERVERERROR}, nil
-	case <-sc.getClientContextDone(context):
-		return &pb.JobPushReply{Code: DISCONNECTED}, nil
-	default:
-		if err := sc.mgr.Push(job); err != nil {
-			return &pb.JobPushReply{Code: JOBERROR, Error: err.Error()}, nil
-		} else {
-			return &pb.JobPushReply{Code: JOBACK}, nil
-		}
+func (sc *Scheduler) BroadCast(context context.Context, job *pb.JobPayload) (*pb.EmptyReply, error) {
+	if err := sc.checkClientOrServerContextClosed(context); err != nil {
+		return &pb.EmptyReply{}, err
+	}
+	if err := sc.mgr.Push(job); err != nil {
+		return &pb.EmptyReply{}, err
+	} else {
+		return &pb.EmptyReply{}, nil
 	}
 }
 
 func (sc *Scheduler) HearBeat(stream pb.Scheduler_HeartBeatServer) error {
 	for {
+		if err := sc.checkClientOrServerContextClosed(stream.Context()); err != nil {
+			return err
+		}
+
 		select {
-		case <-sc.schedulerCtx.Done():
-			return nil
-		case <-sc.getClientContextDone(stream.Context()):
-			return nil
+		case <-stream.Context().Done():
+			return stream.Context().Err()
 		default:
 		}
 
@@ -96,4 +104,18 @@ func (sc *Scheduler) HearBeat(stream pb.Scheduler_HeartBeatServer) error {
 		}
 		sc.heartBeatMonitor.Store(sc.getClientAddr(stream.Context()), time.Now().Unix())
 	}
+}
+
+func (sc *Scheduler) Fetch(context context.Context, queue *pb.Queue) (*pb.JobPayload, error) {
+	if err := sc.checkClientOrServerContextClosed(context); err != nil {
+		return nil, err
+	}
+	return sc.mgr.Fetch(queue.Name)
+}
+
+func (sc *Scheduler) Acknowledge(context context.Context, job *pb.JobPayload) (*pb.EmptyReply, error) {
+	sc.mgr.Do(func() error {
+		return sc.mgr.Acknowledge(job)
+	})
+	return &pb.EmptyReply{}, nil
 }

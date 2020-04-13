@@ -101,20 +101,20 @@ func (m *Manager) Acknowledge(job *pb.JobPayload) error {
 	return nil
 }
 
-func (m *Manager) Fetch(from string) error {
+func (m *Manager) Fetch(from string) (*pb.JobPayload, error) {
 	fetchJob, err := m.Store.Queues[from].Remove()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if _, ok := m.Store.Cache.Load(fetchJob.Jid); ok {
-		return fmt.Errorf("job with %s id already exists", fetchJob.Jid)
+		return nil, fmt.Errorf("job with %s id already exists", fetchJob.Jid)
 	}
 	executionExpiry := time.Now().Add(time.Duration(fetchJob.ReserveFor) * time.Second).Unix()
 	m.Store.Cache.Store(fetchJob.Jid, &pb.Execution{Expiry: executionExpiry})
 	if err = m.Store.Working.AddJob(fetchJob, executionExpiry); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return fetchJob, nil
 }
 
 // Move the jobs from scheduled -> enqueue queues.

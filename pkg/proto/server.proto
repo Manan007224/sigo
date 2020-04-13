@@ -57,15 +57,10 @@ message Pong {
     string msg = 2;
 }
 
-message JobPushReply {
-    string code = 1;
-    string error = 2;
-}
-
 
 service Scheduler {
     rpc Discover(ClientConfig) returns (EmptyReply) {}
-    rpc BroadCast(JobPayload) returns (JobPushReply ) {}
+    rpc BroadCast(JobPayload) returns (EmptyReply) {}
     rpc Fetch(Queue) returns (JobPayload) {}
     rpc Acknowledge(JobPayload) returns (EmptyReply) {}
     rpc Fail(FailPayload) returns (EmptyReply) {}
