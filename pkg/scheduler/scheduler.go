@@ -38,6 +38,16 @@ type Scheduler struct {
 	// it gracefully shuts down.
 	schedulerCancelFunc context.CancelFunc
 	schedulerCtx        context.Context
+
+	// There are some jobs like ProcessScheduledJobs or ProcessExecutingJobs that need to ran on a cron schedule.
+	// jobExecutor is a custom struct which takes in a struct and runs them periodically, and logs their response.
+	// You can initialize a job like :-
+	// job : &Job {
+	// 	every: 5 // job would run every 5 seconds
+	// 	task: ProcessExecutingJobs // function which runs every 5 seconds
+	// 	parentCtx: context.Background()
+	// }
+	jobExecutor *JobsExecutor
 }
 
 func NewScheduler(parentCtx context.Context) (*Scheduler, error) {
@@ -50,6 +60,15 @@ func NewScheduler(parentCtx context.Context) (*Scheduler, error) {
 	scheduler.schedulerCtx, scheduler.schedulerCancelFunc = context.WithCancel(parentCtx)
 	scheduler.heartBeatMonitor = &sync.Map{}
 	scheduler.connectedClients = &sync.Map{}
+
+	// Initialize the background jobs to be ran periodically.
+	jobs := []*Job{
+		{every: 5, task: scheduler.mgr.ProcessScheduledJobs, parentCtx: scheduler.schedulerCtx},
+		{every: 5, task: scheduler.mgr.ProcessExecutingJobs, parentCtx: scheduler.schedulerCtx},
+		{every: 10, task: scheduler.mgr.ProcessFailedJobs, parentCtx: scheduler.schedulerCtx},
+	}
+	scheduler.jobExecutor = NewJobsExecutor(jobs)
+
 	return scheduler, nil
 }
 
@@ -88,11 +107,6 @@ func (sc *Scheduler) checkClientOrServerContextClosed(rpcContext context.Context
 }
 
 func (sc *Scheduler) Discover(context context.Context, clientConfig *pb.ClientConfig) (*pb.EmptyReply, error) {
-	select {
-	case <-sc.schedulerCtx.Done():
-		return nil, serverContextClosed
-	default:
-	}
 	sc.connectedClients.Store(clientConfig.Id, clientConfig)
 	sc.mgr.AddQueue(clientConfig.Queues...)
 	sc.setClientContext(context)
