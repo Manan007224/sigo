@@ -148,3 +148,10 @@ func (sc *Scheduler) Acknowledge(context context.Context, job *pb.JobPayload) (*
 	})
 	return &pb.EmptyReply{}, nil
 }
+
+func (sc *Scheduler) Fail(context context.Context, failJob *pb.FailPayload) (*pb.EmptyReply, error) {
+	sc.mgr.Do(func() error {
+		return sc.mgr.Fail(failJob)
+	})
+	return &pb.EmptyReply{}, nil
+}
