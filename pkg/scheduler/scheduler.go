@@ -3,7 +3,6 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"sync"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/Manan007224/sigo/pkg/manager"
 	pb "github.com/Manan007224/sigo/pkg/proto"
+	"github.com/golang/protobuf/ptypes/empty"
 	"google.golang.org/grpc/peer"
 )
 
@@ -88,43 +88,29 @@ func (sc *Scheduler) checkClientOrServerContextClosed(rpcContext context.Context
 	}
 }
 
-func (sc *Scheduler) Discover(context context.Context, clientConfig *pb.ClientConfig) (*pb.EmptyReply, error) {
+func (sc *Scheduler) Discover(context context.Context, clientConfig *pb.ClientConfig) (*empty.Empty, error) {
 	(*sc.connectedClients)[sc.getClientAddr(context).String()] = true
 	sc.mgr.AddQueue(clientConfig.Queues...)
-	return &pb.EmptyReply{}, nil
+	return &empty.Empty{}, nil
 }
 
-func (sc *Scheduler) BroadCast(context context.Context, job *pb.JobPayload) (*pb.EmptyReply, error) {
+func (sc *Scheduler) BroadCast(context context.Context, job *pb.JobPayload) (*empty.Empty, error) {
 	if err := sc.checkClientOrServerContextClosed(context); err != nil {
-		return &pb.EmptyReply{}, err
+		return nil, err
 	}
 	if err := sc.mgr.Push(job); err != nil {
-		return &pb.EmptyReply{}, err
+		return nil, err
 	} else {
-		return &pb.EmptyReply{}, nil
+		return &empty.Empty{}, nil
 	}
 }
 
-func (sc *Scheduler) HearBeat(stream pb.Scheduler_HeartBeatServer) error {
-	for {
-		ctx := stream.Context()
-		if err := sc.checkClientOrServerContextClosed(ctx); err != nil {
-			return err
-		}
-
-		_, err := stream.Recv()
-		if err != nil {
-			// Client explicitly closed the stream so need to return reply.
-			if err == io.EOF {
-				return stream.SendAndClose(&pb.EmptyReply{})
-			}
-
-			// client got shutdown entirely.
-			log.Printf("client: %s disconnected", sc.getClientAddr(stream.Context()).String())
-			return err
-		}
-		sc.heartBeatMonitor.Store(sc.getClientAddr(ctx).String(), time.Now().Unix())
+func (sc *Scheduler) HeartBeat(context context.Context, ping *empty.Empty) (*empty.Empty, error) {
+	if err := sc.checkClientOrServerContextClosed(context); err != nil {
+		return nil, err
 	}
+	sc.heartBeatMonitor.Store(sc.getClientAddr(context).String(), time.Now().Unix())
+	return &empty.Empty{}, nil
 }
 
 func (sc *Scheduler) Fetch(context context.Context, queue *pb.Queue) (*pb.JobPayload, error) {
@@ -134,24 +120,24 @@ func (sc *Scheduler) Fetch(context context.Context, queue *pb.Queue) (*pb.JobPay
 	return sc.mgr.Fetch(queue.Name)
 }
 
-func (sc *Scheduler) Acknowledge(context context.Context, job *pb.JobPayload) (*pb.EmptyReply, error) {
+func (sc *Scheduler) Acknowledge(context context.Context, job *pb.JobPayload) (*empty.Empty, error) {
 	if err := sc.checkClientOrServerContextClosed(context); err != nil {
 		return nil, err
 	}
 	sc.mgr.Do(func() error {
 		return sc.mgr.Acknowledge(job)
 	})
-	return &pb.EmptyReply{}, nil
+	return &empty.Empty{}, nil
 }
 
-func (sc *Scheduler) Fail(context context.Context, failJob *pb.FailPayload) (*pb.EmptyReply, error) {
+func (sc *Scheduler) Fail(context context.Context, failJob *pb.FailPayload) (*empty.Empty, error) {
 	if err := sc.checkClientOrServerContextClosed(context); err != nil {
 		return nil, err
 	}
 	sc.mgr.Do(func() error {
 		return sc.mgr.Fail(failJob)
 	})
-	return &pb.EmptyReply{}, nil
+	return &empty.Empty{}, nil
 }
 
 func (sc *Scheduler) Shutdown() {
@@ -161,24 +147,25 @@ func (sc *Scheduler) Shutdown() {
 
 func (sc *Scheduler) checkConnectedClients() {
 	ticker := time.NewTicker(15 * time.Second)
-	for range ticker.C {
+	for {
 		select {
 		case <-sc.schedulerCtx.Done():
+			ticker.Stop()
 			return
-		default:
-		}
-		exceptablePingTime := time.Now().Add(-time.Duration(oldestExceptableTime) * time.Second).Unix()
-		for client := range *(sc.connectedClients) {
-			lastPingTime, ok := sc.heartBeatMonitor.Load(client)
-			if !ok {
-				continue
-			}
-			if lastPingTime.(int64) < exceptablePingTime {
-				// TODO - also delete any ongoing RPC calls made by this client.
-				delete(*sc.connectedClients, client)
-				sc.heartBeatMonitor.Delete(client)
+		case <-ticker.C:
+			exceptablePingTime := time.Now().Add(-time.Duration(oldestExceptableTime) * time.Second).Unix()
+			for client := range *(sc.connectedClients) {
+				lastPingTime, ok := sc.heartBeatMonitor.Load(client)
+				if !ok {
+					continue
+				}
+				if lastPingTime.(int64) < exceptablePingTime {
+					// TODO - also delete any ongoing RPC calls made by this client.
+					delete(*sc.connectedClients, client)
+					sc.heartBeatMonitor.Delete(client)
 
-				log.Printf("[CLIENT] %s disconnected", client)
+					log.Printf("[CLIENT] %s disconnected", client)
+				}
 			}
 		}
 	}

@@ -1,7 +1,7 @@
 syntax = "proto3";
 package protobuf;
 
-message EmptyReply {}
+import "google/protobuf/empty.proto";
 
 message ClientConfig {
     string id = 1;
@@ -59,10 +59,10 @@ message Pong {
 
 
 service Scheduler {
-    rpc Discover(ClientConfig) returns (EmptyReply) {}
-    rpc BroadCast(JobPayload) returns (EmptyReply) {}
+    rpc Discover(ClientConfig) returns (google.protobuf.Empty) {}
+    rpc BroadCast(JobPayload) returns (google.protobuf.Empty) {}
     rpc Fetch(Queue) returns (JobPayload) {}
-    rpc Acknowledge(JobPayload) returns (EmptyReply) {}
-    rpc Fail(FailPayload) returns (EmptyReply) {}
-    rpc HeartBeat(stream Ping) returns (EmptyReply) {}
+    rpc Acknowledge(JobPayload) returns (google.protobuf.Empty) {}
+    rpc Fail(FailPayload) returns (google.protobuf.Empty) {}
+    rpc HeartBeat(google.protobuf.Empty) returns (google.protobuf.Empty) {}
 }
