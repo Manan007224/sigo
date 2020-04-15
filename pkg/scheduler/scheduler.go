@@ -17,7 +17,7 @@ import (
 var (
 	clientContextClosed  = fmt.Errorf("client context closed")
 	serverContextClosed  = fmt.Errorf("server context closed")
-	oldestExceptableTime = 17
+	oldestExceptableTime = 16
 )
 
 type Scheduler struct {
@@ -153,7 +153,7 @@ func (sc *Scheduler) checkConnectedClients() {
 			ticker.Stop()
 			return
 		case <-ticker.C:
-			exceptablePingTime := time.Now().Add(-time.Duration(oldestExceptableTime) * time.Second).Unix()
+			exceptablePingTime := time.Now().Add(-time.Duration(2*oldestExceptableTime) * time.Second).Unix()
 			for client := range *(sc.connectedClients) {
 				lastPingTime, ok := sc.heartBeatMonitor.Load(client)
 				if !ok {
