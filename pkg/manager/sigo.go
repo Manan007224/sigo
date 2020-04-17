@@ -57,7 +57,7 @@ func (m *Manager) Push(job *pb.JobPayload) error {
 	return m.Store.Scheduled.Add(job)
 }
 
-func (m *Manager) Fail(job *pb.FailPayload) error {
+func (m *Manager) Fail(job *pb.FailPayload, clientId string) error {
 	if len(job.ErrorType) == 0 {
 		job.ErrorMessage = "unknown"
 	}
@@ -71,14 +71,14 @@ func (m *Manager) Fail(job *pb.FailPayload) error {
 	}
 	m.Store.Cache.Delete(job.Id)
 
-	findJob, err := m.Store.Working.FindJobById(job.Id, failJob.(*pb.Execution).Expiry)
+	findJob, err := m.Store.Working.FindJobById(job.Id, clientId, failJob.(*pb.Execution).Expiry)
 	if err != nil {
 		return fmt.Errorf("job with %s not found", job.Id)
 	}
 
 	if findJob.Retry > 0 {
 		job.Retry--
-		if err := m.Store.Working.Remove(findJob); err != nil {
+		if err := m.Store.Working.RemoveFetchedJob(findJob); err != nil {
 			log.Println(err)
 		}
 		return m.Store.Retry.AddJob(findJob, time.Now().Add(-5*time.Second).Unix())
@@ -94,20 +94,24 @@ func (m *Manager) Acknowledge(job *pb.JobPayload) error {
 	m.Store.Cache.Delete(job.Jid)
 
 	// Delete the job from the working queue
-	return m.Store.Working.Remove(job)
+	return m.Store.Working.RemoveFetchedJob(job)
 }
 
-func (m *Manager) Fetch(from string) (*pb.JobPayload, error) {
+func (m *Manager) Fetch(from string, clientId string) (*pb.JobPayload, error) {
 	fetchJob, err := m.Store.Queues[from].Remove()
 	if err != nil {
 		return nil, err
 	}
+
+	// set the clientId only for the fetch job
+	fetchJob.ClientId = clientId
+
 	if _, ok := m.Store.Cache.Load(fetchJob.Jid); ok {
 		return nil, fmt.Errorf("job with %s id already exists", fetchJob.Jid)
 	}
 	executionExpiry := time.Now().Add(time.Duration(fetchJob.ReserveFor) * time.Second).Unix()
 	m.Store.Cache.Store(fetchJob.Jid, &pb.Execution{Expiry: executionExpiry})
-	if err = m.Store.Working.AddJob(fetchJob, executionExpiry); err != nil {
+	if err = m.Store.Working.AddWorkingJob(fetchJob, executionExpiry); err != nil {
 		return nil, err
 	}
 	return fetchJob, nil

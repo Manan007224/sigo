@@ -58,7 +58,7 @@ var _ = Describe("Sigo", func() {
 			Expect(count).Should(Equal(int64(1)))
 
 			// Test Fetch
-			_, err = mgr.Fetch("High")
+			_, err = mgr.Fetch("High", "1")
 			count = mgr.Store.Queues["High"].Size()
 			Expect(count).Should(Equal(int64(0)))
 			count, err = mgr.Store.Working.Size()
@@ -74,7 +74,7 @@ var _ = Describe("Sigo", func() {
 			Expect(ok).Should(BeFalse())
 
 			err = mgr.Push(highJob1)
-			_, err = mgr.Fetch("High")
+			_, err = mgr.Fetch("High", "1")
 			count, err = mgr.Store.Working.Size()
 			Expect(count).Should(Equal(int64(1)))
 
@@ -84,7 +84,7 @@ var _ = Describe("Sigo", func() {
 				ErrorType:    "unknown",
 				Backtrace:    []string{"/line1", "/line2"},
 			}
-			err = mgr.Fail(failJob)
+			err = mgr.Fail(failJob, "1")
 			count, err = mgr.Store.Retry.Size()
 			Expect(count).Should(Equal(int64(1)))
 
@@ -112,8 +112,8 @@ var _ = Describe("Sigo", func() {
 
 			for i := 0; i < 5; i++ {
 				if i%2 == 0 {
-					mgr.Fetch("High")
-					mgr.Fetch("Low")
+					mgr.Fetch("High", "1")
+					mgr.Fetch("Low", "1")
 				}
 			}
 			count, err := mgr.Store.Working.Size()

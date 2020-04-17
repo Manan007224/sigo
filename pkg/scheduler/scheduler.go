@@ -87,14 +87,14 @@ func (sc *Scheduler) checkClientOrServerContextClosed(rpcContext context.Context
 	}
 }
 
-func (sc *Scheduler) Discover(context context.Context, clientConfig *pb.ClientConfig) (*empty.Empty, error) {
-	(*sc.connectedClients)[sc.getClientAddr(context).String()] = true
+func (sc *Scheduler) Discover(ctx context.Context, clientConfig *pb.ClientConfig) (*empty.Empty, error) {
+	(*sc.connectedClients)[sc.getClientAddr(ctx).String()] = true
 	sc.mgr.AddQueue(clientConfig.Queues...)
 	return &empty.Empty{}, nil
 }
 
-func (sc *Scheduler) BroadCast(context context.Context, job *pb.JobPayload) (*empty.Empty, error) {
-	if err := sc.checkClientOrServerContextClosed(context); err != nil {
+func (sc *Scheduler) BroadCast(ctx context.Context, job *pb.JobPayload) (*empty.Empty, error) {
+	if err := sc.checkClientOrServerContextClosed(ctx); err != nil {
 		return nil, err
 	}
 	if err := sc.mgr.Push(job); err != nil {
@@ -104,23 +104,23 @@ func (sc *Scheduler) BroadCast(context context.Context, job *pb.JobPayload) (*em
 	}
 }
 
-func (sc *Scheduler) HeartBeat(context context.Context, ping *empty.Empty) (*empty.Empty, error) {
-	if err := sc.checkClientOrServerContextClosed(context); err != nil {
+func (sc *Scheduler) HeartBeat(ctx context.Context, ping *empty.Empty) (*empty.Empty, error) {
+	if err := sc.checkClientOrServerContextClosed(ctx); err != nil {
 		return nil, err
 	}
-	sc.heartBeatMonitor.Store(sc.getClientAddr(context).String(), time.Now().Unix())
+	sc.heartBeatMonitor.Store(sc.getClientAddr(ctx).String(), time.Now().Unix())
 	return &empty.Empty{}, nil
 }
 
-func (sc *Scheduler) Fetch(context context.Context, queue *pb.Queue) (*pb.JobPayload, error) {
-	if err := sc.checkClientOrServerContextClosed(context); err != nil {
+func (sc *Scheduler) Fetch(ctx context.Context, queue *pb.Queue) (*pb.JobPayload, error) {
+	if err := sc.checkClientOrServerContextClosed(ctx); err != nil {
 		return nil, err
 	}
-	return sc.mgr.Fetch(queue.Name)
+	return sc.mgr.Fetch(queue.Name, sc.getClientAddr(ctx).String())
 }
 
-func (sc *Scheduler) Acknowledge(context context.Context, job *pb.JobPayload) (*empty.Empty, error) {
-	if err := sc.checkClientOrServerContextClosed(context); err != nil {
+func (sc *Scheduler) Acknowledge(ctx context.Context, job *pb.JobPayload) (*empty.Empty, error) {
+	if err := sc.checkClientOrServerContextClosed(ctx); err != nil {
 		return nil, err
 	}
 	sc.mgr.Do(func() error {
@@ -129,8 +129,8 @@ func (sc *Scheduler) Acknowledge(context context.Context, job *pb.JobPayload) (*
 	return &empty.Empty{}, nil
 }
 
-func (sc *Scheduler) Fail(context context.Context, failJob *pb.FailPayload) (*empty.Empty, error) {
-	if err := sc.checkClientOrServerContextClosed(context); err != nil {
+func (sc *Scheduler) Fail(ctx context.Context, failJob *pb.FailPayload) (*empty.Empty, error) {
+	if err := sc.checkClientOrServerContextClosed(ctx); err != nil {
 		return nil, err
 	}
 	sc.mgr.Do(func() error {

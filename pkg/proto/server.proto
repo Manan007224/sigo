@@ -26,6 +26,7 @@ message JobPayload {
     int64 enqueue_at = 6;
     int64 reserve_for = 7;
     string queue = 8;
+    string clientId = 9;
 }
 
 message Param {
