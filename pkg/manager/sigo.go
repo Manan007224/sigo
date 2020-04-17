@@ -141,18 +141,15 @@ func (m *Manager) ProcessExecutingJobs(till int64) error {
 	}
 
 	for _, job := range jobs {
-		// check if the client has ACKed or Failed the job or not.
-		if _, ok := m.Store.Cache.Load(job.Jid); ok {
-			if job.Retry > 0 {
-				if err = m.Store.Retry.Add(job); err != nil {
-					log.Println("[ProcessExecutingJobs] error", err)
-				}
-			}
-
-			// delete the job from the working queue.
-			if err = m.Store.Working.Remove(job); err != nil {
+		if job.Retry > 0 {
+			if err = m.Store.Retry.Add(job); err != nil {
 				log.Println("[ProcessExecutingJobs] error", err)
 			}
+		}
+
+		// delete the job from the working queue.
+		if err = m.Store.Working.Remove(job); err != nil {
+			log.Println("[ProcessExecutingJobs] error", err)
 		}
 	}
 	return nil
