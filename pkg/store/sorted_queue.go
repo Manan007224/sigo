@@ -119,7 +119,7 @@ func (queue *SortedQueue) remove(value string, jid string) error {
 	return nil
 }
 
-func (queue *SortedQueue) Remove(job *pb.JobPayload, timestamp int64) error {
+func (queue *SortedQueue) Remove(job *pb.JobPayload) error {
 	payload, err := proto.Marshal(job)
 	if err != nil {
 		return protoMarshalErr

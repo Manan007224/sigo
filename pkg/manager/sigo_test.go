@@ -124,7 +124,7 @@ var _ = Describe("Sigo", func() {
 
 			err = mgr.ProcessFailedJobs(tm.Add(5 * time.Second).Unix())
 			count, err = mgr.Store.Retry.Size()
-			Expect(count).Should(Equal(int64(6)))
+			Expect(count).Should(Equal(int64(0)))
 
 			Expect(err).ShouldNot(HaveOccurred())
 		})

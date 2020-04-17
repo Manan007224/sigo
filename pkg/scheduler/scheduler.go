@@ -3,7 +3,6 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -143,30 +142,4 @@ func (sc *Scheduler) Fail(context context.Context, failJob *pb.FailPayload) (*em
 func (sc *Scheduler) Shutdown() {
 	sc.mgr.Shutdown()
 	sc.jobExecutor.Shutdown()
-}
-
-func (sc *Scheduler) checkConnectedClients() {
-	ticker := time.NewTicker(15 * time.Second)
-	for {
-		select {
-		case <-sc.schedulerCtx.Done():
-			ticker.Stop()
-			return
-		case <-ticker.C:
-			exceptablePingTime := time.Now().Add(-time.Duration(2*oldestExceptableTime) * time.Second).Unix()
-			for client := range *(sc.connectedClients) {
-				lastPingTime, ok := sc.heartBeatMonitor.Load(client)
-				if !ok {
-					continue
-				}
-				if lastPingTime.(int64) < exceptablePingTime {
-					// TODO - also delete any ongoing RPC calls made by this client.
-					delete(*sc.connectedClients, client)
-					sc.heartBeatMonitor.Delete(client)
-
-					log.Printf("[CLIENT] %s disconnected", client)
-				}
-			}
-		}
-	}
 }

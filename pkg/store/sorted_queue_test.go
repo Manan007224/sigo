@@ -79,7 +79,7 @@ var _ = Describe("SortedQueue", func() {
 			Expect(ok).Should(BeTrue())
 
 			// Test Remove
-			err = queue.Remove(testJob, tm1)
+			err = queue.Remove(testJob)
 			count, err = queue.Size()
 			keyCount, err = queue.SizeByKey(tm1)
 
@@ -87,7 +87,7 @@ var _ = Describe("SortedQueue", func() {
 			Expect(count).Should(Equal(int64(30)))
 
 			for _, job := range jobs {
-				err = queue.Remove(job, tm)
+				err = queue.Remove(job)
 				Expect(err).ShouldNot(HaveOccurred())
 			}
 

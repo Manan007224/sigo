@@ -18,6 +18,7 @@ func (j *Job) execute() {
 	for range ticker.C {
 		select {
 		case <-j.parentCtx.Done():
+			ticker.Stop()
 			log.Printf(j.parentCtx.Err().Error())
 			return
 		default:
@@ -50,4 +51,30 @@ func (jb *JobsExecutor) Run() {
 
 func (jb *JobsExecutor) Shutdown() {
 	jb.wg.Wait()
+}
+
+func (sc *Scheduler) checkConnectedClients() {
+	ticker := time.NewTicker(15 * time.Second)
+	for {
+		select {
+		case <-sc.schedulerCtx.Done():
+			ticker.Stop()
+			return
+		case <-ticker.C:
+			exceptablePingTime := time.Now().Add(-time.Duration(2*oldestExceptableTime) * time.Second).Unix()
+			for client := range *(sc.connectedClients) {
+				lastPingTime, ok := sc.heartBeatMonitor.Load(client)
+				if !ok {
+					continue
+				}
+				if lastPingTime.(int64) < exceptablePingTime {
+					// TODO - also delete any ongoing RPC calls made by this client.
+					delete(*sc.connectedClients, client)
+					sc.heartBeatMonitor.Delete(client)
+
+					log.Printf("[CLIENT] %s disconnected", client)
+				}
+			}
+		}
+	}
 }

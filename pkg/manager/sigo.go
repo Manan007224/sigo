@@ -70,35 +70,31 @@ func (m *Manager) Fail(job *pb.FailPayload) error {
 		return fmt.Errorf("job with %s not found", job.Id)
 	}
 	m.Store.Cache.Delete(job.Id)
-	if failJob.(*pb.Execution).Expiry >= time.Now().Unix() {
-		job, err := m.Store.Working.FindJobById(job.Id, failJob.(*pb.Execution).Expiry)
-		if err != nil {
-			return err
-		}
-		if job.Retry > 0 {
-			job.Retry--
 
-			// TODO - think about a better exponential retry enqueue logic.
+	findJob, err := m.Store.Working.FindJobById(job.Id, failJob.(*pb.Execution).Expiry)
+	if err != nil {
+		return fmt.Errorf("job with %s not found", job.Id)
+	}
 
-			// No need to remove the job from the working queue.
-			// The cron job will automatically remove the job.
-			return m.Store.Retry.AddJob(job, time.Now().Add(-5*time.Second).Unix())
+	if findJob.Retry > 0 {
+		job.Retry--
+		if err := m.Store.Working.Remove(findJob); err != nil {
+			log.Println(err)
 		}
+		return m.Store.Retry.AddJob(findJob, time.Now().Add(-5*time.Second).Unix())
 	}
 	return nil
 }
 
 func (m *Manager) Acknowledge(job *pb.JobPayload) error {
-	ackJob, ok := m.Store.Cache.Load(job.Jid)
+	_, ok := m.Store.Cache.Load(job.Jid)
 	if !ok {
 		return fmt.Errorf("job with %s not found", job.Jid)
 	}
 	m.Store.Cache.Delete(job.Jid)
-	if ackJob.(*pb.Execution).Expiry >= time.Now().Unix() {
-		return m.Store.Working.Remove(job, ackJob.(*pb.Execution).Expiry)
-	}
-	log.Println("[ACK] received after job expiry time")
-	return nil
+
+	// Delete the job from the working queue
+	return m.Store.Working.Remove(job)
 }
 
 func (m *Manager) Fetch(from string) (*pb.JobPayload, error) {
@@ -143,8 +139,15 @@ func (m *Manager) ProcessExecutingJobs(till int64) error {
 	for _, job := range jobs {
 		// check if the client has ACKed or Failed the job or not.
 		if _, ok := m.Store.Cache.Load(job.Jid); ok {
-			if err = m.Store.Retry.Add(job); err != nil {
-				log.Println("[ProcessExecutingJobs] error")
+			if job.Retry > 0 {
+				if err = m.Store.Retry.Add(job); err != nil {
+					log.Println("[ProcessExecutingJobs] error", err)
+				}
+			}
+
+			// delete the job from the working queue.
+			if err = m.Store.Working.Remove(job); err != nil {
+				log.Println("[ProcessExecutingJobs] error", err)
 			}
 		}
 	}
@@ -154,7 +157,7 @@ func (m *Manager) ProcessExecutingJobs(till int64) error {
 func (m *Manager) ProcessFailedJobs(till int64) error {
 	jobs, err := m.Store.Retry.Get(till)
 	if err != nil {
-		log.Println("[ProcessFailedJobs] error")
+		log.Println("[ProcessFailedJobs] error", err)
 		return err
 	}
 
@@ -162,10 +165,12 @@ func (m *Manager) ProcessFailedJobs(till int64) error {
 		if job.Retry == 0 {
 			continue
 		}
-		if _, ok := m.Store.Cache.Load(job.Jid); ok {
-			if err = m.Store.Queues[job.Queue].Add(job); err != nil {
-				log.Println("[ProcessFailedJobs] error")
-			}
+		if err = m.Store.Queues[job.Queue].Add(job); err != nil {
+			log.Println("[ProcessFailedJobs] error", err)
+		}
+		// Remove the job from the retry queue
+		if err = m.Store.Retry.Remove(job); err != nil {
+			log.Println("[ProcessFailedJobs] error", err)
 		}
 	}
 
