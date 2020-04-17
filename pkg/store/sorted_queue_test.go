@@ -62,7 +62,7 @@ var _ = Describe("SortedQueue", func() {
 			count, err := queue.Size()
 			Expect(count).Should(Equal(int64(30)))
 
-			keyCount, err := queue.SizeByKey(tm)
+			keyCount, err := queue.SizeByScore(tm)
 			Expect(keyCount).Should(Equal(int64(30)))
 
 			// Test Get
@@ -81,7 +81,7 @@ var _ = Describe("SortedQueue", func() {
 			// Test Remove
 			err = queue.Remove(testJob)
 			count, err = queue.Size()
-			keyCount, err = queue.SizeByKey(tm1)
+			keyCount, err = queue.SizeByScore(tm1)
 
 			Expect(keyCount).Should(Equal(int64(0)))
 			Expect(count).Should(Equal(int64(30)))

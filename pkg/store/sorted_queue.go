@@ -180,11 +180,7 @@ func (queue *SortedQueue) Size() (int64, error) {
 	return size, nil
 }
 
-func (queue *SortedQueue) getWorkingQueues() ([]string, error) {
-	return queue.Client.Keys("working|*").Result()
-}
-
-func (queue *SortedQueue) SizeByKey(key int64) (int64, error) {
+func (queue *SortedQueue) SizeByScore(key int64) (int64, error) {
 	values, err := queue.find(key, false)
 	return int64(len(values)), err
 }
@@ -219,4 +215,8 @@ func (queue *SortedQueue) MoveToSorted(name string, timestamp int64) error {
 
 func (queue *SortedQueue) getWorkingQueueKey(clientId string) string {
 	return fmt.Sprintf("working|%s", clientId)
+}
+
+func (queue *SortedQueue) getWorkingQueues() ([]string, error) {
+	return queue.Client.Keys("working|*").Result()
 }

@@ -54,7 +54,7 @@ var _ = Describe("Queue", func() {
 
 			err = queue.MoveTo(sortedQ)
 			count, err = sortedQ.Size()
-			keyCount, err := sortedQ.SizeByKey(tm)
+			keyCount, err := sortedQ.SizeByScore(tm)
 
 			Expect(count).Should(Equal(int64(1)))
 			Expect(keyCount).Should(Equal(int64(1)))

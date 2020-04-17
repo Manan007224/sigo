@@ -48,7 +48,7 @@ var _ = Describe("Sigo", func() {
 			tm := time.Now().Unix()
 			highJob := CreateJob("1", tm, "High")
 			err = mgr.Push(highJob)
-			count, err := mgr.Store.Scheduled.SizeByKey(tm)
+			count, err := mgr.Store.Scheduled.SizeByScore(tm)
 			Expect(count).Should(Equal(int64(1)))
 
 			highJob = CreateJob("2", 0, "High")
