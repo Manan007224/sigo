@@ -18,13 +18,13 @@ type Job struct {
 
 func (j *Job) execute() {
 	ticker := time.NewTicker(j.every * time.Second)
-	for range ticker.C {
+	for {
 		select {
 		case <-j.parentCtx.Done():
 			ticker.Stop()
 			log.Printf(j.parentCtx.Err().Error())
 			return
-		default:
+		case <-ticker.C:
 			switch j.task.(type) {
 			case processJob:
 				j.task.(processJob)(time.Now().Unix())
