@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -20,29 +21,12 @@ var (
 )
 
 type Scheduler struct {
-	mgr *manager.Manager
-
-	// heartBeatMonitor stores the last ping from each client.
-	heartBeatMonitor *sync.Map
-
-	// Information of the connected clients. Just for logging purposes.
-	connectedClients *map[string]bool
-
-	// schedulerCancelFunc and schedulerCtx are child context's of the server context so could be either used
-	// by the scheduler to cancel RPC execution of any other clients or could be cancelled by the server when
-	// it gracefully shuts down.
+	mgr                 *manager.Manager
+	heartBeatMonitor    *sync.Map
+	connectedClients    *map[string]bool
 	schedulerCancelFunc context.CancelFunc
 	schedulerCtx        context.Context
-
-	// There are some jobs like ProcessScheduledJobs or ProcessExecutingJobs that need to ran on a cron schedule.
-	// jobExecutor is a custom struct which takes in a struct and runs them periodically, and logs their response.
-	// You can initialize a job like :-
-	// job : &Job {
-	// 	every: 5 // job would run every 5 seconds
-	// 	task: ProcessExecutingJobs // function which runs every 5 seconds
-	// 	parentCtx: context.Background()
-	// }
-	jobExecutor *JobsExecutor
+	jobExecutor         *JobsExecutor
 }
 
 func NewScheduler(parentCtx context.Context) (*Scheduler, error) {
@@ -58,15 +42,31 @@ func NewScheduler(parentCtx context.Context) (*Scheduler, error) {
 
 	// Initialize the background jobs to be ran periodically.
 	jobs := []*Job{
-		{every: 5, task: scheduler.mgr.ProcessScheduledJobs, parentCtx: scheduler.schedulerCtx},
-		{every: 5, task: scheduler.mgr.ProcessExecutingJobs, parentCtx: scheduler.schedulerCtx},
-		{every: 10, task: scheduler.mgr.ProcessFailedJobs, parentCtx: scheduler.schedulerCtx},
+		{
+			every:     5,
+			task:      scheduler.mgr.ProcessScheduledJobs,
+			parentCtx: scheduler.schedulerCtx,
+		},
+		{
+			every:     5,
+			task:      scheduler.mgr.ProcessExecutingJobs,
+			parentCtx: scheduler.schedulerCtx,
+		},
+		{
+			every:     10,
+			task:      scheduler.mgr.ProcessFailedJobs,
+			parentCtx: scheduler.schedulerCtx,
+		},
+		{
+			every:     10,
+			task:      scheduler.checkConnectedClients,
+			parentCtx: scheduler.schedulerCtx,
+		},
 	}
 	scheduler.jobExecutor = NewJobsExecutor(jobs)
 
 	// Run all the background jobs
 	scheduler.jobExecutor.Run()
-	go scheduler.checkConnectedClients()
 
 	return scheduler, nil
 }
@@ -134,12 +134,30 @@ func (sc *Scheduler) Fail(ctx context.Context, failJob *pb.FailPayload) (*empty.
 		return nil, err
 	}
 	sc.mgr.Do(func() error {
-		return sc.mgr.Fail(failJob)
+		return sc.mgr.Fail(failJob, sc.getClientAddr(ctx).String())
 	})
 	return &empty.Empty{}, nil
 }
 
 func (sc *Scheduler) Shutdown() {
+	sc.schedulerCancelFunc()
 	sc.mgr.Shutdown()
 	sc.jobExecutor.Shutdown()
+}
+
+func (sc *Scheduler) checkConnectedClients() {
+	exceptablePingTime := time.Now().Add(-time.Duration(2*oldestExceptableTime) * time.Second).Unix()
+	for client := range *(sc.connectedClients) {
+		lastPingTime, ok := sc.heartBeatMonitor.Load(client)
+		if !ok {
+			continue
+		}
+		if lastPingTime.(int64) < exceptablePingTime {
+			// TODO - also delete any ongoing RPC calls made by this client.
+			delete(*sc.connectedClients, client)
+			sc.heartBeatMonitor.Delete(client)
+
+			log.Printf("[CLIENT] %s disconnected", client)
+		}
+	}
 }
