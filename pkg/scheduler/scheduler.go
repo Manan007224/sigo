@@ -27,16 +27,17 @@ type Scheduler struct {
 	schedulerCancelFunc context.CancelFunc
 	schedulerCtx        context.Context
 	jobExecutor         *JobsExecutor
+	blacklistClientCh   chan string
 }
 
-func NewScheduler(parentCtx context.Context) (*Scheduler, error) {
+func NewScheduler(ctx context.Context, cancel context.CancelFunc) (*Scheduler, error) {
 	var scheduler *Scheduler
 	mgr, err := manager.NewManager([]*pb.QueueConfig{})
 	if err != nil {
 		return scheduler, err
 	}
 	scheduler.mgr = mgr
-	scheduler.schedulerCtx, scheduler.schedulerCancelFunc = context.WithCancel(parentCtx)
+	scheduler.schedulerCtx, scheduler.schedulerCancelFunc = ctx, cancel
 	scheduler.heartBeatMonitor = &sync.Map{}
 	scheduler.connectedClients = &map[string]bool{}
 
@@ -157,7 +158,23 @@ func (sc *Scheduler) checkConnectedClients() {
 			delete(*sc.connectedClients, client)
 			sc.heartBeatMonitor.Delete(client)
 
+			// blacklist the client
+			sc.blacklistClientCh <- client
+
 			log.Printf("client %s disconnected", client)
+
+		}
+	}
+}
+
+// processBlacklistClients removes all the jobs for this client from the working queue.
+func (sc *Scheduler) procesBlacklistClients() {
+	for {
+		select {
+		case <-sc.schedulerCtx.Done():
+			return
+		case clientId := <-sc.blacklistClientCh:
+			sc.mgr.ProcessOrphanedJobs(clientId)
 		}
 	}
 }

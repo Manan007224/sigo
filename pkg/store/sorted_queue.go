@@ -124,6 +124,24 @@ func (queue *SortedQueue) Get(till int64) ([]*pb.JobPayload, error) {
 	return result, nil
 }
 
+func (queue *SortedQueue) PopWorkingJobs(clientId string) []*pb.JobPayload {
+	jobs := []*pb.JobPayload{}
+	currJobs, err := queue.Client.ZRangeByScore(queue.getWorkingQueueKey(clientId), redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Result()
+	for _, currJob := range currJobs {
+		var job pb.JobPayload
+		if err = proto.Unmarshal([]byte(currJob), &job); err != nil {
+			continue
+		}
+		jobs = append(jobs, &job)
+	}
+
+	// delete the queue
+	count, _ := queue.Client.Del(queue.getWorkingQueueKey(clientId)).Result()
+	log.Printf("removed %d jobs", count)
+
+	return jobs
+}
+
 func (queue *SortedQueue) GetWorkingJobs(till int64) ([]*pb.JobPayload, error) {
 	tm := strconv.FormatInt(till, 10)
 

@@ -179,6 +179,24 @@ func (m *Manager) ProcessFailedJobs(till int64) error {
 	return nil
 }
 
+func (m *Manager) ProcessOrphanedJobs(clientId string) {
+	jobs := m.Store.Working.PopWorkingJobs(clientId)
+
+	// move each job to their respective queues
+	for _, job := range jobs {
+		job.ClientId = ""
+
+		// remove the job if there from the local cache
+		if _, ok := m.Store.Cache.Load(job.Jid); ok {
+			m.Store.Cache.Delete(job.Jid)
+		}
+
+		if err := m.Store.Queues[job.Queue].Add(job); err != nil {
+			log.Printf("error in adding job to enqueue queue %v", err)
+		}
+	}
+}
+
 func (m *Manager) AddQueue(queues ...*pb.QueueConfig) {
 	for _, queue := range queues {
 		m.Store.Queues[queue.Name] = &store.Queue{

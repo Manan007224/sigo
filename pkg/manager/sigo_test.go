@@ -128,5 +128,32 @@ var _ = Describe("Sigo", func() {
 
 			Expect(err).ShouldNot(HaveOccurred())
 		})
+
+		Specify("Process Orphaned Jobs", func() {
+			// tm := time.Now()
+			for i := 0; i < 10; i++ {
+				mgr.Push(CreateJob(strconv.Itoa(i), 0, "High"))
+			}
+
+			for i := 0; i < 10; i++ {
+				mgr.Fetch("High", "1")
+			}
+
+			count, err := mgr.Store.Working.Size()
+			Expect(count).Should(Equal(int64(10)))
+			mgr.ProcessOrphanedJobs("1")
+			for i := 0; i < 10; i++ {
+				_, ok := mgr.Store.Cache.Load(strconv.Itoa(i))
+				Expect(ok).Should(BeFalse())
+			}
+
+			count, err = mgr.Store.Working.Size()
+			Expect(count).Should(Equal(int64(0)))
+
+			count = mgr.Store.Queues["High"].Size()
+			Expect(count).Should(Equal(int64(10)))
+
+			Expect(err).ShouldNot(HaveOccurred())
+		})
 	})
 })
