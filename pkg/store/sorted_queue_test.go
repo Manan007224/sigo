@@ -65,6 +65,20 @@ var _ = Describe("SortedQueue", func() {
 			keyCount, err := queue.SizeByScore(tm)
 			Expect(keyCount).Should(Equal(int64(30)))
 
+			// // Test AddWorkingJob
+			// workq := &SortedQueue{Name: "working", Client: client}
+			// for i := 0; i < 10; i++ {
+			// 	if i%2 == 0 {
+			// 		jobs[i].ClientId = "1"
+			// 	} else {
+			// 		jobs[i].ClientId = "2"
+			// 	}
+			// 	err = workq.AddWorkingJob(jobs[i], tm)
+			// 	Expect(err).ShouldNot(HaveOccurred())
+			// }
+			// count, err = workq.Size()
+			// Expect(count).Should(Equal(int64(10)))
+
 			// Test Get
 			jobs1, err := queue.Get(tm)
 			Expect(jobs1).Should(HaveLen(30))
@@ -85,6 +99,7 @@ var _ = Describe("SortedQueue", func() {
 
 			Expect(keyCount).Should(Equal(int64(0)))
 			Expect(count).Should(Equal(int64(30)))
+			count, err = queue.Size()
 
 			for _, job := range jobs {
 				err = queue.Remove(job)

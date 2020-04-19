@@ -157,7 +157,7 @@ func (sc *Scheduler) checkConnectedClients() {
 			delete(*sc.connectedClients, client)
 			sc.heartBeatMonitor.Delete(client)
 
-			log.Printf("[CLIENT] %s disconnected", client)
+			log.Printf("client %s disconnected", client)
 		}
 	}
 }

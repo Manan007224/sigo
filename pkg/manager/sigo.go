@@ -31,7 +31,7 @@ func (m *Manager) Do(task func() error) {
 		err := task()
 		// TODO - find a better logging solution here.
 		if err != nil {
-			log.Println("[ERROR] in task execution", err)
+			log.Println("error in task execution", err)
 		}
 	}(m.wg)
 }
@@ -76,11 +76,12 @@ func (m *Manager) Fail(job *pb.FailPayload, clientId string) error {
 		return fmt.Errorf("job with %s not found", job.Id)
 	}
 
+	if err := m.Store.Working.RemoveFetchedJob(findJob); err != nil {
+		log.Println(err)
+	}
+
 	if findJob.Retry > 0 {
 		job.Retry--
-		if err := m.Store.Working.RemoveFetchedJob(findJob); err != nil {
-			log.Println(err)
-		}
 		return m.Store.Retry.AddJob(findJob, time.Now().Add(-5*time.Second).Unix())
 	}
 	return nil
@@ -121,12 +122,12 @@ func (m *Manager) Fetch(from string, clientId string) (*pb.JobPayload, error) {
 func (m *Manager) ProcessScheduledJobs(till int64) error {
 	jobs, err := m.Store.Scheduled.Get(till)
 	if err != nil {
-		log.Println("[ProcessScheduledJobs] error")
+		log.Printf("processScheduledJobs error %v", err)
 		return err
 	}
 	for _, job := range jobs {
 		if err = m.Store.Queues[job.Queue].Add(job); err != nil {
-			log.Println("[ProcessScheduledJobs] error")
+			log.Printf("processScheduledJobs error %v", err)
 		}
 	}
 	return nil
@@ -134,22 +135,22 @@ func (m *Manager) ProcessScheduledJobs(till int64) error {
 
 // Move the jobs from working -> retry or done queue
 func (m *Manager) ProcessExecutingJobs(till int64) error {
-	jobs, err := m.Store.Working.Get(till)
+	jobs, err := m.Store.Working.GetWorkingJobs(till)
 	if err != nil {
-		log.Println("[ProcessExecutingJobs] error")
+		log.Printf("processExecutingJobs error %v", err)
 		return err
 	}
 
 	for _, job := range jobs {
 		if job.Retry > 0 {
 			if err = m.Store.Retry.Add(job); err != nil {
-				log.Println("[ProcessExecutingJobs] error", err)
+				log.Printf("processExecutingJobs error %v", err)
 			}
 		}
 
 		// delete the job from the working queue.
 		if err = m.Store.Working.Remove(job); err != nil {
-			log.Println("[ProcessExecutingJobs] error", err)
+			log.Printf("processExecutingJobs error %v", err)
 		}
 	}
 	return nil
@@ -158,7 +159,7 @@ func (m *Manager) ProcessExecutingJobs(till int64) error {
 func (m *Manager) ProcessFailedJobs(till int64) error {
 	jobs, err := m.Store.Retry.Get(till)
 	if err != nil {
-		log.Println("[ProcessFailedJobs] error", err)
+		log.Printf("processFailedJobs error %v", err)
 		return err
 	}
 
@@ -167,11 +168,11 @@ func (m *Manager) ProcessFailedJobs(till int64) error {
 			continue
 		}
 		if err = m.Store.Queues[job.Queue].Add(job); err != nil {
-			log.Println("[ProcessFailedJobs] error", err)
+			log.Printf("processFailedJobs error %v", err)
 		}
 		// Remove the job from the retry queue
 		if err = m.Store.Retry.Remove(job); err != nil {
-			log.Println("[ProcessFailedJobs] error", err)
+			log.Printf("processFailedJobs error %v", err)
 		}
 	}
 

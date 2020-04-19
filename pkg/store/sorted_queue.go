@@ -39,7 +39,6 @@ func (queue *SortedQueue) add(job *pb.JobPayload, timestamp int64, isWorkingJob 
 	if isWorkingJob {
 		queueKey = queue.getWorkingQueueKey(job.ClientId)
 	}
-
 	_, err = queue.Client.ZAdd(queueKey, redis.Z{Score: float64(timestamp), Member: payload}).Result()
 	if err != nil {
 		return errors.Wrapf(err, "failed to add job to sorted queue")
@@ -125,6 +124,32 @@ func (queue *SortedQueue) Get(till int64) ([]*pb.JobPayload, error) {
 	return result, nil
 }
 
+func (queue *SortedQueue) GetWorkingJobs(till int64) ([]*pb.JobPayload, error) {
+	tm := strconv.FormatInt(till, 10)
+
+	values, err := queue.getWorkingQueues()
+	if err != nil {
+		return nil, err
+	}
+
+	jobs := []*pb.JobPayload{}
+	for _, value := range values {
+		currJobs, err := queue.Client.ZRangeByScore(value, redis.ZRangeBy{Min: "-inf", Max: tm}).Result()
+		if err != nil {
+			log.Printf("error in finding %s queue jobs %v", value, err)
+		}
+
+		for _, currJob := range currJobs {
+			var job pb.JobPayload
+			if err = proto.Unmarshal([]byte(currJob), &job); err != nil {
+				continue
+			}
+			jobs = append(jobs, &job)
+		}
+	}
+	return jobs, nil
+}
+
 func (queue *SortedQueue) remove(value string, jid string) error {
 	_, err := queue.Client.ZRem(queue.Name, value).Result()
 	if err != nil {
@@ -150,10 +175,7 @@ func (queue *SortedQueue) Remove(job *pb.JobPayload) error {
 	if err != nil {
 		return protoMarshalErr
 	}
-	if err = queue.remove(string(payload), job.Jid); err != nil {
-		return err
-	}
-	return nil
+	return queue.remove(string(payload), job.Jid)
 }
 
 func (queue *SortedQueue) Size() (int64, error) {
@@ -168,7 +190,7 @@ func (queue *SortedQueue) Size() (int64, error) {
 	}
 
 	for _, value := range values {
-		qs, err := queue.Client.ZCount(queue.getWorkingQueueKey(value), "-inf", "+inf").Result()
+		qs, err := queue.Client.ZCount(value, "-inf", "+inf").Result()
 		if err != nil {
 			log.Println(err)
 			continue
