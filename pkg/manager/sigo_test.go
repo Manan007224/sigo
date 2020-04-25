@@ -12,8 +12,7 @@ import (
 )
 
 func CreateJob(id string, timestamp int64, queue string) *pb.JobPayload {
-	params := make(map[string]*pb.Param)
-	params["value"] = &pb.Param{Type: "int32", Value: []byte("55")}
+	params := []byte("params")
 	return &pb.JobPayload{
 		Jid:        id,
 		Name:       "test-job",
